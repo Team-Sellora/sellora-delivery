@@ -1,0 +1,147 @@
+name: Reusable .NET CI
+
+on:
+  workflow_call:
+    inputs:
+      solution-path:
+        required: true
+        type: string
+      sonar-project-key:
+        required: true
+        type: string
+      sonar-organization:
+        required: true
+        type: string
+    secrets:
+      SONAR_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-analyze:
+    name: build-test-analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.403
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - name: Install SonarScanner
+        run: |
+          dotnet tool install dotnet-sonarscanner \
+            --tool-path "${{ runner.temp }}/scanner"
+
+      - name: Start SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          "${{ runner.temp }}/scanner/dotnet-sonarscanner" begin \
+            /k:"${{ inputs.sonar-project-key }}" \
+            /o:"${{ inputs.sonar-organization }}" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.qualitygate.wait=true
+
+      - name: Restore
+        run: dotnet restore "${{ inputs.solution-path }}"
+
+      - name: Build
+        run: |
+          dotnet build "${{ inputs.solution-path }}" \
+            --configuration Release \
+            --no-restore
+
+      - name: Test with OpenCover coverage
+        run: |
+          dotnet test "${{ inputs.solution-path }}" \
+            --configuration Release \
+            --no-build \
+            --collect:"XPlat Code Coverage;Format=opencover" \
+            --results-directory ./TestResults \
+            --logger "trx;LogFileName=test-results.trx"
+
+      - name: Finish SonarCloud analysis
+        if: success()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          "${{ runner.temp }}/scanner/dotnet-sonarscanner" end \
+            /d:sonar.token="$SONAR_TOKEN"
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: delivery-test-results
+          path: TestResults/
+          if-no-files-found: warn
+
+  docker-health:
+    name: docker-health
+    needs: build-test-analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: delivery_ci
+          POSTGRES_USER: sellora_ci
+          POSTGRES_PASSWORD: sellora_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sellora_ci -d delivery_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t sellora-delivery:ci .
+
+      - name: Start image and verify /health
+        run: |
+          set -euo pipefail
+
+          docker run -d --name sellora-delivery-ci --network host \
+            -e ASPNETCORE_ENVIRONMENT=Container \
+            -e ASPNETCORE_URLS="http://+:8080" \
+            -e ConnectionStrings__DeliveryDb="Host=localhost;Port=5432;Database=delivery_ci;Username=sellora_ci;Password=sellora_ci_password" \
+            -e Kafka__BootstrapServers="localhost:9092" \
+            -e Jwt__Authority="https://auth.invalid" \
+            -e Jwt__Audience="ci-audience" \
+            sellora-delivery:ci
+
+          trap 'docker logs sellora-delivery-ci || true; docker rm -f sellora-delivery-ci || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/health >/dev/null; then
+              echo "Delivery image is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Delivery image did not become healthy"
+          exit 1
