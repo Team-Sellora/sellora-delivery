@@ -8,9 +8,15 @@ public class DeliveryDbContextFactory : IDesignTimeDbContextFactory<DeliveryDbCo
 {
     public DeliveryDbContext CreateDbContext(string[] args)
     {
+        // Set ConnectionStrings__DeliveryDb in the environment before running dotnet-ef.
+        var connectionString =
+            Environment.GetEnvironmentVariable("ConnectionStrings__DeliveryDb")
+            ?? throw new InvalidOperationException(
+                "Set the ConnectionStrings__DeliveryDb environment variable to run EF migrations.");
+
         var options = new DbContextOptionsBuilder<DeliveryDbContext>()
             .UseNpgsql(
-                "Host=localhost;Database=delivery_db;Username=sellora;Password=sellora",
+                connectionString,
                 npgsql => npgsql.MigrationsAssembly(typeof(DeliveryDbContext).Assembly.FullName))
             .Options;
 
