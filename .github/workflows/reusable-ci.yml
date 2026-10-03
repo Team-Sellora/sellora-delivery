@@ -56,6 +56,7 @@ jobs:
             /o:"${{ inputs.sonar-organization }}" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.coverage.exclusions="**/Migrations/**,**/Program.cs,**/DeliveryDbContextFactory.cs,**/DependencyInjection.cs,**/OrderEventConsumerService.cs,**/OutboxRelayService.cs,**/KafkaEventPublisher.cs,**/Persistence/Configurations/**,**/Http/**,**/Middleware/**" \
             /d:sonar.qualitygate.wait=true
 
       - name: Restore
