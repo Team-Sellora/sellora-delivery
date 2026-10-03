@@ -1,0 +1,21 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace Sellora.DeliveryService.Infrastructure.Persistence;
+
+// Used by dotnet-ef migrations tooling — not referenced at runtime.
+public class DeliveryDbContextFactory : IDesignTimeDbContextFactory<DeliveryDbContext>
+{
+    public DeliveryDbContext CreateDbContext(string[] args)
+    {
+        var options = new DbContextOptionsBuilder<DeliveryDbContext>()
+            .UseNpgsql(
+                "Host=localhost;Database=delivery_db;Username=sellora;Password=sellora",
+                npgsql => npgsql.MigrationsAssembly(typeof(DeliveryDbContext).Assembly.FullName))
+            .Options;
+
+        // Pass null for ITenantContext — the design-time factory has no HTTP context,
+        // so no query filters are applied (which is correct for migrations).
+        return new DeliveryDbContext(options, tenantContext: null);
+    }
+}
