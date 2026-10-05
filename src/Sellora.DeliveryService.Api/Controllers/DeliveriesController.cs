@@ -68,7 +68,7 @@ public class DeliveriesController : ControllerBase
 
         if (job.Status != DeliveryStatus.Pending)
         {
-            return Conflict($"Delivery job is in {job.Status} status and cannot be assigned.");
+            return Conflict(new { detail = $"Delivery job is in {job.Status} status and cannot be assigned." });
         }
 
         var colomboZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo");
@@ -77,7 +77,7 @@ public class DeliveriesController : ControllerBase
         
         if (request.ScheduledDate < todayDateOnly)
         {
-            return BadRequest("Scheduled date cannot be in the past.");
+            return BadRequest(new { detail = "Scheduled date cannot be in the past." });
         }
 
         var reps = await _organizationClient.ListSalesRepsAsync(ct);
@@ -88,7 +88,7 @@ public class DeliveriesController : ControllerBase
 
         if (eligibleRep == null)
         {
-            return BadRequest($"Sales rep {request.SalesRepId} is not eligible for this delivery job. The rep must be active and assigned to territory {job.TerritoryId}.");
+            return BadRequest(new { detail = $"Sales rep {request.SalesRepId} is not eligible for this delivery job. The rep must be active and assigned to territory {job.TerritoryId}." });
         }
 
         var userId = User.FindFirst("sub")?.Value ?? "unknown";
