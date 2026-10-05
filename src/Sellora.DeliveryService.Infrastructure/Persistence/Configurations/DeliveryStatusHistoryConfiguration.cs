@@ -11,7 +11,7 @@ internal class DeliveryStatusHistoryConfiguration : IEntityTypeConfiguration<Del
         builder.ToTable("delivery_status_history");
 
         builder.HasKey(h => h.DeliveryStatusHistoryId);
-        builder.Property(h => h.DeliveryStatusHistoryId).HasColumnName("delivery_status_history_id");
+        builder.Property(h => h.DeliveryStatusHistoryId).HasColumnName("delivery_status_history_id").ValueGeneratedNever();
         builder.Property(h => h.DeliveryJobId).HasColumnName("delivery_job_id");
         builder.Property(h => h.CompanyId).HasColumnName("company_id");
         builder.Property(h => h.FromStatus).HasColumnName("from_status").HasConversion<string?>().HasMaxLength(20);

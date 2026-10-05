@@ -10,6 +10,7 @@ using Sellora.DeliveryService.Application.Common.Interfaces;
 using Sellora.DeliveryService.Infrastructure;
 using Sellora.DeliveryService.Infrastructure.Persistence;
 using Sellora.DeliveryService.Infrastructure.Tenancy;
+using Sellora.DeliveryService.Infrastructure.Dependencies;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -33,6 +34,8 @@ try
     builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
     builder.Services.AddScoped<ISystemTenantContext, SystemTenantContext>();
 
+    builder.Services.AddControllers();
+
     builder.Services.AddTransient<ForwardBearerTokenHandler>();
     builder.Services.AddTransient<ForwardCorrelationIdHandler>();
 
@@ -54,6 +57,10 @@ try
 
     builder.Services.AddInfrastructure(builder.Configuration);
 
+    builder.Services.AddDeliveryDependencies(builder.Configuration)
+        .AddHttpMessageHandler<ForwardBearerTokenHandler>()
+        .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
+
     var app = builder.Build();
 
     using (var scope = app.Services.CreateScope())
@@ -67,6 +74,8 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
     app.UseMiddleware<CallerScopeMiddleware>();
+
+    app.MapControllers();
 
     app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "sellora-delivery" }))
         .AllowAnonymous();

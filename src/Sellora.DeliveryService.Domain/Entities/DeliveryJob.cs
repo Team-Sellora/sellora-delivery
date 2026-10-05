@@ -157,4 +157,28 @@ public class DeliveryJob
 
         return job;
     }
+
+    public void Assign(
+        Guid salesRepId,
+        string salesRepName,
+        DateOnly scheduledDate,
+        string actorUserId,
+        string actorRole)
+    {
+        var oldStatus = Status;
+        Status = DeliveryStatus.Assigned;
+        AssignedRepId = salesRepId;
+        AssignedRepName = salesRepName;
+        ScheduledDate = scheduledDate;
+
+        _statusHistory.Add(new DeliveryStatusHistory(
+            DeliveryJobId,
+            CompanyId,
+            fromStatus: oldStatus,
+            toStatus: DeliveryStatus.Assigned,
+            actorUserId: actorUserId,
+            actorRole: actorRole,
+            reason: $"Assigned to {salesRepName} for {scheduledDate:yyyy-MM-dd}",
+            occurredAt: DateTimeOffset.UtcNow));
+    }
 }

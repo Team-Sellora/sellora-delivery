@@ -27,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sellora.DeliveryService.Infrastructure\Sellora.DeliveryService.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Sellora.DeliveryService.Application\Sellora.DeliveryService.Application.csproj" />
+    <ProjectReference Include="..\..\src\Sellora.DeliveryService.Api\Sellora.DeliveryService.Api.csproj" />
   </ItemGroup>
 
 </Project>
