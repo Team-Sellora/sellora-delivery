@@ -181,4 +181,36 @@ public class DeliveryJob
             reason: $"Assigned to {salesRepName} for {scheduledDate:yyyy-MM-dd}",
             occurredAt: DateTimeOffset.UtcNow));
     }
+
+    public void ChangeStatus(
+        DeliveryStatus newStatus,
+        string actorUserId,
+        string actorRole,
+        string? reason = null)
+    {
+        if (!DeliveryTransitions.IsAllowed(Status, newStatus))
+        {
+            throw new InvalidOperationException($"Transition from {Status} to {newStatus} is not allowed.");
+        }
+
+        var oldStatus = Status;
+        Status = newStatus;
+        
+        var occurredAt = DateTimeOffset.UtcNow;
+
+        if (newStatus == DeliveryStatus.Delivered)
+        {
+            DeliveredAt = occurredAt;
+        }
+
+        _statusHistory.Add(new DeliveryStatusHistory(
+            DeliveryJobId,
+            CompanyId,
+            fromStatus: oldStatus,
+            toStatus: newStatus,
+            actorUserId: actorUserId,
+            actorRole: actorRole,
+            reason: reason,
+            occurredAt: occurredAt));
+    }
 }

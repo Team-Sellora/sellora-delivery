@@ -21,34 +21,47 @@ public class DeliveryStatusChangedEventTests
         var shopId = Guid.NewGuid();
         var shopName = "Test Shop";
         var status = DeliveryStatus.Assigned.ToString();
-        var assignedRepId = Guid.NewGuid();
-        var assignedRepName = "John Doe";
         var scheduledDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1));
-        var deliveredAt = DateTimeOffset.UtcNow;
         var occurredAt = DateTimeOffset.UtcNow;
+        var shopOwnerName = "Owner";
+        var shopOwnerEmail = "test@shop.com";
+        var agencyEmail = "test@agency.com";
+        var previousStatus = DeliveryStatus.Pending.ToString();
+        var correlationId = "CORR-123";
+        var reason = "Assigned";
+        var territoryId = Guid.NewGuid();
+        var provinceId = Guid.NewGuid();
+        var actorUserId = "user-123";
+        var actorRole = "System";
 
         // Act
         var evt = DeliveryStatusChangedEvent.Create(
-            companyId, deliveryJobId, deliveryReference, orderId, orderReference,
-            fulfilmentType, agencyId, agencyName, shopId, shopName, status,
-            assignedRepId, assignedRepName, scheduledDate, deliveredAt, occurredAt);
+            companyId, deliveryJobId, orderId, orderReference,
+            previousStatus, status, occurredAt, reason, scheduledDate,
+            shopId, shopName, shopOwnerName, shopOwnerEmail,
+            agencyId, agencyName, agencyEmail,
+            deliveryReference, territoryId, provinceId,
+            actorUserId, actorRole, correlationId);
 
         // Assert
         evt.CompanyId.Should().Be(companyId);
-        evt.DeliveryJobId.Should().Be(deliveryJobId);
+        evt.DeliveryId.Should().Be(deliveryJobId);
         evt.DeliveryReference.Should().Be(deliveryReference);
         evt.OrderId.Should().Be(orderId);
         evt.OrderReference.Should().Be(orderReference);
-        evt.FulfilmentType.Should().Be(fulfilmentType);
-        evt.AgencyId.Should().Be(agencyId);
-        evt.AgencyName.Should().Be(agencyName);
-        evt.ShopId.Should().Be(shopId);
-        evt.ShopName.Should().Be(shopName);
+        evt.Agency.AgencyId.Should().Be(agencyId);
+        evt.Agency.Name.Should().Be(agencyName);
+        evt.Shop.ShopId.Should().Be(shopId);
+        evt.Shop.Name.Should().Be(shopName);
         evt.Status.Should().Be(status);
-        evt.AssignedRepId.Should().Be(assignedRepId);
-        evt.AssignedRepName.Should().Be(assignedRepName);
-        evt.ScheduledDate.Should().Be(scheduledDate);
-        evt.DeliveredAt.Should().Be(deliveredAt);
+        evt.PreviousStatus.Should().Be(previousStatus);
+        evt.Reason.Should().Be(reason);
+        evt.ScheduledFor.Should().Be(scheduledDate);
+        evt.CorrelationId.Should().Be(correlationId);
+        evt.TerritoryId.Should().Be(territoryId);
+        evt.ProvinceId.Should().Be(provinceId);
+        evt.Actor.UserId.Should().Be(actorUserId);
+        evt.Actor.Role.Should().Be(actorRole);
         evt.OccurredAt.Should().Be(occurredAt);
     }
 }

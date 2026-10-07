@@ -9,7 +9,9 @@ using Microsoft.Extensions.Options;
 using Sellora.DeliveryService.Application.Common.Interfaces;
 using Sellora.DeliveryService.Application.Consumers.Events;
 using Sellora.DeliveryService.Application.Services;
+using Sellora.DeliveryService.Application.Events;
 using Sellora.DeliveryService.Domain.Entities;
+using Sellora.DeliveryService.Domain.Enums;
 using Sellora.DeliveryService.Infrastructure.Persistence;
 
 namespace Sellora.DeliveryService.Infrastructure.Kafka;
@@ -99,6 +101,96 @@ internal class OrderEventConsumerService(
         if (baseEvent is null)
         {
             await SendToDeadLetterAsync(result, "DeserialiseFailure: null result", ct);
+            return;
+        }
+
+        if (baseEvent.EventType == "OrderCancelled")
+        {
+            OrderCancelledEvent cancelled;
+            try
+            {
+                cancelled = JsonSerializer.Deserialize<OrderCancelledEvent>(result.Message.Value, JsonOpts)!;
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "OrderEventConsumer failed to deserialise OrderCancelledEvent {OrderReference}",
+                    baseEvent.OrderReference);
+                await SendToDeadLetterAsync(result, "DeserialiseFailure: " + ex.Message, ct);
+                return;
+            }
+
+            logger.LogInformation("OrderEventConsumer processing {EventType} {OrderReference} company={CompanyId}",
+                cancelled.EventType, cancelled.OrderReference, cancelled.CompanyId);
+
+            using var cancelScope = scopeFactory.CreateScope();
+            var systemTenantCancel = cancelScope.ServiceProvider.GetRequiredService<ISystemTenantContext>();
+            systemTenantCancel.SetCompanyId(cancelled.CompanyId);
+
+            var dbCancel = cancelScope.ServiceProvider.GetRequiredService<DeliveryDbContext>();
+
+            var alreadyProcessedCancel = await dbCancel.ProcessedDeliveryEvents
+                .IgnoreQueryFilters()
+                .AnyAsync(e => e.CompanyId == cancelled.CompanyId && e.EventId == cancelled.EventId, ct);
+
+            if (alreadyProcessedCancel)
+            {
+                logger.LogInformation("DeliveryEventDuplicate {OrderReference} eventId={EventId} — skipping",
+                    cancelled.OrderReference, cancelled.EventId);
+                return;
+            }
+
+            var job = await dbCancel.DeliveryJobs.Include(j => j.StatusHistory).FirstOrDefaultAsync(j => j.OrderReference == cancelled.OrderReference, ct);
+
+            if (job == null)
+            {
+                logger.LogInformation("OrderEventConsumer skipping OrderCancelled for {OrderReference}: no delivery job exists", cancelled.OrderReference);
+            }
+            else if (job.Status == DeliveryStatus.Delivered || job.Status == DeliveryStatus.Failed || job.Status == DeliveryStatus.Cancelled)
+            {
+                logger.LogInformation("OrderEventConsumer skipping OrderCancelled for {OrderReference}: job is already in terminal state {Status}", cancelled.OrderReference, job.Status);
+            }
+            else
+            {
+                job.ChangeStatus(DeliveryStatus.Cancelled, "System", "System", $"Order: {cancelled.Reason}");
+                
+                var outboxWriter = cancelScope.ServiceProvider.GetRequiredService<IOutboxWriter>();
+                
+                var outboxMessage = new OutboxMessage(
+                    job.CompanyId,
+                    "sellora.delivery.v1",
+                    job.OrderReference,
+                    "DeliveryStatusChanged",
+                    JsonSerializer.Serialize(DeliveryStatusChangedEvent.Create(
+                        companyId: job.CompanyId,
+                        deliveryId: job.DeliveryJobId,
+                        orderId: job.OrderId,
+                        orderReference: job.OrderReference,
+                        previousStatus: job.StatusHistory.OrderByDescending(h => h.OccurredAt).Skip(1).FirstOrDefault()?.ToStatus.ToString() ?? DeliveryStatus.Pending.ToString(),
+                        status: DeliveryStatus.Cancelled.ToString(),
+                        occurredAt: DateTimeOffset.UtcNow,
+                        reason: $"Order: {cancelled.Reason}",
+                        scheduledFor: job.ScheduledDate,
+                        shopId: job.ShopId,
+                        shopName: job.ShopName,
+                        shopOwnerName: job.ShopOwnerName,
+                        shopOwnerEmail: job.ShopOwnerEmail,
+                        agencyId: job.AgencyId,
+                        agencyName: job.AgencyName,
+                        agencyEmail: job.AgencyEmail,
+                        deliveryReference: job.DeliveryReference,
+                        territoryId: job.TerritoryId,
+                        provinceId: job.ProvinceId,
+                        actorUserId: "System",
+                        actorRole: "System",
+                        correlationId: null
+                    ))
+                );
+
+                outboxWriter.Write(outboxMessage);
+            }
+
+            dbCancel.ProcessedDeliveryEvents.Add(new ProcessedDeliveryEvent(cancelled.CompanyId, cancelled.EventId));
+            await dbCancel.SaveChangesAsync(ct);
             return;
         }
 

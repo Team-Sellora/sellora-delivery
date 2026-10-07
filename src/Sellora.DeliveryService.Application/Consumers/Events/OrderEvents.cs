@@ -43,3 +43,13 @@ public record CheckoutLocationDto(
     Guid LocationId,
     string LocationName,
     DateTimeOffset? CheckedInAt);
+
+public record OrderCancelledEvent(
+    Guid EventId,
+    string EventType,
+    Guid CompanyId,
+    Guid OrderId,
+    string OrderReference,
+    DateTimeOffset OccurredAt,
+    string? Reason,
+    DateTimeOffset CancelledAt) : OrderEventBase(EventId, EventType, CompanyId, OrderId, OrderReference, OccurredAt);
