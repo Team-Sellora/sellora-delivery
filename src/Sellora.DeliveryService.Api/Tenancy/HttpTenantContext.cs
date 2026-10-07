@@ -13,7 +13,8 @@ internal class HttpTenantContext(IHttpContextAccessor accessor, ISystemTenantCon
                 return systemContext.CompanyId;
             }
 
-            var claim = accessor.HttpContext?.User.FindFirst("company_id")?.Value;
+            var claim = accessor.HttpContext?.User.FindFirst("companyId")?.Value
+                     ?? accessor.HttpContext?.User.FindFirst("company_id")?.Value;
             if (Guid.TryParse(claim, out var id))
             {
                 return id;

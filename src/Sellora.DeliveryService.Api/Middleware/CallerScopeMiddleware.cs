@@ -12,7 +12,7 @@ public class CallerScopeMiddleware(RequestDelegate next)
         // enrichment (e.g. pushing CompanyId into Serilog context).
         using var scope = Serilog.Context.LogContext.PushProperty(
             "CompanyId",
-            context.User.FindFirst("company_id")?.Value ?? "unknown");
+            context.User.FindFirst("companyId")?.Value ?? context.User.FindFirst("company_id")?.Value ?? "unknown");
 
         await next(context);
     }
