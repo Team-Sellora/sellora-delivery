@@ -17,6 +17,11 @@ internal class DeliveryJobRepository(DeliveryDbContext db) : IDeliveryJobReposit
         return await db.DeliveryJobs.FirstOrDefaultAsync(x => x.DeliveryJobId == deliveryJobId, ct);
     }
 
+    public void SetOriginalVersion(DeliveryJob job, uint version)
+    {
+        db.Entry(job).Property(j => j.Version).OriginalValue = version;
+    }
+
     public async Task SaveChangesAsync(CancellationToken ct = default)
     {
         await db.SaveChangesAsync(ct);

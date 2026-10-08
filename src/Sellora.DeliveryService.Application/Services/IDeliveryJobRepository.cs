@@ -6,5 +6,6 @@ public interface IDeliveryJobRepository
 {
     Task AddAsync(DeliveryJob job, CancellationToken ct);
     Task<DeliveryJob?> GetByIdAsync(Guid deliveryJobId, CancellationToken ct = default);
+    void SetOriginalVersion(DeliveryJob job, uint version);
     Task SaveChangesAsync(CancellationToken ct = default);
 }

@@ -227,4 +227,138 @@ public class DeliveriesControllerTests
         _mockOutboxWriter.Verify(w => w.Write(It.IsAny<OutboxMessage>()), Times.Once);
         _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+    [Fact]
+    public async Task UpdateStatus_WhenInvalidStatus_ReturnsBadRequest()
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        var request = new UpdateDeliveryStatusRequest { Status = "InvalidStatus" };
+
+        // Act
+        var result = await _controller.UpdateStatus(jobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task UpdateStatus_WhenFailedWithoutReason_ReturnsBadRequest()
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        var request = new UpdateDeliveryStatusRequest { Status = "Failed", Reason = "" };
+
+        // Act
+        var result = await _controller.UpdateStatus(jobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task UpdateStatus_WhenReasonTooLong_ReturnsBadRequest()
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        var request = new UpdateDeliveryStatusRequest { Status = "Failed", Reason = new string('A', 501) };
+
+        // Act
+        var result = await _controller.UpdateStatus(jobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task UpdateStatus_WhenJobNotFound_ReturnsNotFound()
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        var request = new UpdateDeliveryStatusRequest { Status = "Delivered" };
+        
+        _mockRepository.Setup(r => r.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DeliveryJob)null!);
+            
+        var repId = Guid.NewGuid();
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(repId, _agencyId, null, Array.Empty<Guid>(), "test-user"));
+
+        // Act
+        var result = await _controller.UpdateStatus(jobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task UpdateStatus_WhenNotAssignedRep_ReturnsForbid()
+    {
+        // Arrange
+        var job = CreateTestJob(status: DeliveryStatus.Assigned);
+        
+        _mockRepository.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+            
+        var differentRepId = Guid.NewGuid();
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(differentRepId, _agencyId, null, Array.Empty<Guid>(), "test-user"));
+
+        var request = new UpdateDeliveryStatusRequest { Status = "Delivered" };
+
+        // Act
+        var result = await _controller.UpdateStatus(job.DeliveryJobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public async Task UpdateStatus_WhenInvalidTransition_ReturnsConflict()
+    {
+        // Arrange
+        var job = CreateTestJob(status: DeliveryStatus.Assigned); // Assigned -> Cancelled is allowed, but PATCH only allows InTransit, Delivered, Failed. Assigned -> Delivered is NOT allowed.
+        
+        _mockRepository.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+            
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(job.AssignedRepId, _agencyId, null, Array.Empty<Guid>(), "test-user"));
+
+        var request = new UpdateDeliveryStatusRequest { Status = "Delivered" }; // Assigned -> Delivered is invalid
+
+        // Act
+        var result = await _controller.UpdateStatus(job.DeliveryJobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task UpdateStatus_WhenValid_UpdatesStatusAndReturnsNoContent()
+    {
+        // Arrange
+        var job = CreateTestJob(status: DeliveryStatus.Assigned);
+        // Force job into InTransit
+        job.ChangeStatus(DeliveryStatus.InTransit, "system", "system");
+        
+        _mockRepository.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+            
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(job.AssignedRepId, _agencyId, null, Array.Empty<Guid>(), "test-user"));
+
+        var request = new UpdateDeliveryStatusRequest { Status = "Delivered", Version = 123 };
+
+        // Act
+        var result = await _controller.UpdateStatus(job.DeliveryJobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NoContentResult>();
+        job.Status.Should().Be(DeliveryStatus.Delivered);
+        job.DeliveredAt.Should().NotBeNull();
+        
+        _mockRepository.Verify(r => r.SetOriginalVersion(job, 123), Times.Once);
+        _mockOutboxWriter.Verify(w => w.Write(It.IsAny<OutboxMessage>()), Times.Once);
+        _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

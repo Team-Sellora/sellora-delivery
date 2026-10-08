@@ -108,21 +108,26 @@ public class DeliveriesController : ControllerBase
             "DeliveryStatusChanged",
             JsonSerializer.Serialize(DeliveryStatusChangedEvent.Create(
                 companyId: job.CompanyId,
-                deliveryJobId: job.DeliveryJobId,
-                deliveryReference: job.DeliveryReference,
+                deliveryId: job.DeliveryJobId,
                 orderId: job.OrderId,
                 orderReference: job.OrderReference,
-                fulfilmentType: job.FulfilmentType,
-                agencyId: job.AgencyId,
-                agencyName: job.AgencyName,
+                previousStatus: DeliveryStatus.Pending.ToString(),
+                status: job.Status.ToString(),
+                occurredAt: DateTimeOffset.UtcNow,
+                reason: $"Assigned to {eligibleRep.DisplayName} for {request.ScheduledDate:yyyy-MM-dd}",
+                scheduledFor: job.ScheduledDate,
                 shopId: job.ShopId,
                 shopName: job.ShopName,
-                status: job.Status.ToString(),
-                assignedRepId: job.AssignedRepId,
-                assignedRepName: job.AssignedRepName,
-                scheduledDate: job.ScheduledDate,
-                deliveredAt: job.DeliveredAt,
-                occurredAt: DateTimeOffset.UtcNow
+                shopOwnerName: job.ShopOwnerName,
+                shopOwnerEmail: job.ShopOwnerEmail,
+                agencyId: job.AgencyId,
+                agencyName: job.AgencyName,
+                agencyEmail: job.AgencyEmail,
+                deliveryReference: job.DeliveryReference,
+                territoryId: job.TerritoryId,
+                provinceId: job.ProvinceId,
+                actorUserId: userId,
+                actorRole: role
             ))
         );
 
@@ -132,10 +137,104 @@ public class DeliveriesController : ControllerBase
 
         return NoContent();
     }
+    [HttpPatch("{id:guid}/status")]
+    [Authorize(Policy = RolePolicies.RepWrite)]
+    public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateDeliveryStatusRequest request, CancellationToken ct)
+    {
+        if (!Enum.TryParse<DeliveryStatus>(request.Status, out var newStatus) ||
+            (newStatus != DeliveryStatus.InTransit && newStatus != DeliveryStatus.Delivered && newStatus != DeliveryStatus.Failed))
+        {
+            return BadRequest(new { detail = "Status must be InTransit, Delivered, or Failed." });
+        }
+
+        if (newStatus == DeliveryStatus.Failed && string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return BadRequest(new { detail = "A reason is required when marking a delivery as Failed." });
+        }
+        
+        if (request.Reason?.Length > 500)
+        {
+            return BadRequest(new { detail = "Reason cannot exceed 500 characters." });
+        }
+
+        var job = await _repository.GetByIdAsync(id, ct);
+        var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
+
+        if (job == null || callerScope?.SalesRepId == null)
+        {
+            return NotFound();
+        }
+
+        if (job.AssignedRepId != callerScope.SalesRepId)
+        {
+            return Forbid();
+        }
+
+        if (!DeliveryTransitions.IsAllowed(job.Status, newStatus))
+        {
+            return Conflict(new { detail = $"Transition from {job.Status} to {newStatus} is not allowed." });
+        }
+
+        var userId = User.FindFirst("sub")?.Value ?? "unknown";
+        var role = User.FindFirst("roles")?.Value ?? "SalesRep";
+
+        job.ChangeStatus(newStatus, userId, role, request.Reason);
+        _repository.SetOriginalVersion(job, request.Version);
+
+        var outboxMessage = new OutboxMessage(
+            job.CompanyId,
+            "sellora.delivery.v1",
+            job.OrderReference,
+            "DeliveryStatusChanged",
+            JsonSerializer.Serialize(DeliveryStatusChangedEvent.Create(
+                companyId: job.CompanyId,
+                deliveryId: job.DeliveryJobId,
+                orderId: job.OrderId,
+                orderReference: job.OrderReference,
+                previousStatus: job.StatusHistory.OrderByDescending(h => h.OccurredAt).Skip(1).FirstOrDefault()?.ToStatus.ToString() ?? DeliveryStatus.Pending.ToString(),
+                status: newStatus.ToString(),
+                occurredAt: DateTimeOffset.UtcNow,
+                reason: request.Reason,
+                scheduledFor: job.ScheduledDate,
+                shopId: job.ShopId,
+                shopName: job.ShopName,
+                shopOwnerName: job.ShopOwnerName,
+                shopOwnerEmail: job.ShopOwnerEmail,
+                agencyId: job.AgencyId,
+                agencyName: job.AgencyName,
+                agencyEmail: job.AgencyEmail,
+                deliveryReference: job.DeliveryReference,
+                territoryId: job.TerritoryId,
+                provinceId: job.ProvinceId,
+                actorUserId: userId,
+                actorRole: role
+            ))
+        );
+
+        _outboxWriter.Write(outboxMessage);
+
+        try
+        {
+            await _repository.SaveChangesAsync(ct);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return StatusCode(412, new { detail = "Concurrency conflict. The delivery job has been updated by another process." });
+        }
+
+        return NoContent();
+    }
 }
 
 public class AssignDeliveryRequest
 {
     public Guid SalesRepId { get; set; }
     public DateOnly ScheduledDate { get; set; }
+}
+
+public class UpdateDeliveryStatusRequest
+{
+    public string Status { get; set; } = default!;
+    public string? Reason { get; set; }
+    public uint Version { get; set; }
 }
