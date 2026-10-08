@@ -242,11 +242,17 @@ public class DeliveriesController : ControllerBase
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
-        var isCompanyAdmin = User.IsInRole(SelloraRoles.SystemAdmin) || User.IsInRole(SelloraRoles.CompanyAdmin);
-        var isAreaManager = User.IsInRole(SelloraRoles.AreaManager);
-        var isAgencyOperator = User.IsInRole(SelloraRoles.AgencyOperator);
-        var isSalesRep = User.IsInRole(SelloraRoles.SalesRep);
-        var isShopOwner = User.IsInRole(SelloraRoles.ShopOwner);
+        
+
+        var roles = User.Claims.Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+                              .Select(c => c.Value.Contains('/') ? c.Value.Split('/')[1] : c.Value)
+                              .ToList();
+
+        var isCompanyAdmin = roles.Contains(SelloraRoles.SystemAdmin) || roles.Contains(SelloraRoles.CompanyAdmin);
+        var isAreaManager = roles.Contains(SelloraRoles.AreaManager);
+        var isAgencyOperator = roles.Contains(SelloraRoles.AgencyOperator);
+        var isSalesRep = roles.Contains(SelloraRoles.SalesRep);
+        var isShopOwner = roles.Contains(SelloraRoles.ShopOwner);
 
         if (!isCompanyAdmin)
         {
