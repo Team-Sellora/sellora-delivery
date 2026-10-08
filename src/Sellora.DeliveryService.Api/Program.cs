@@ -52,13 +52,6 @@ try
                 ValidateLifetime = true,
                 RoleClaimType = "roles"
             };
-
-            // DEV HACK: Bypass SSL validation for self-signed WSO2 server
-            // In production, WSO2 should have a valid SSL certificate.
-            options.BackchannelHttpHandler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-            };
         });
 
     builder.Services.AddAuthorization(RolePolicies.Register);

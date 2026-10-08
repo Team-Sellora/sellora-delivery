@@ -18,12 +18,6 @@ public static class DependencyRegistration
 
         var builder = services.AddHttpClient<IOrganizationClient, OrganizationClient>(client =>
                 client.BaseAddress = BaseAddress(options.Organization, "Organization"))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-            {
-                // DEV: bypass self-signed cert on WSO2 APIM instance.
-                // In production the APIM will carry a valid CA-signed cert.
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-            })
             .AddResilience("organization", options.Organization, options.CircuitBreaker);
 
         return builder;
