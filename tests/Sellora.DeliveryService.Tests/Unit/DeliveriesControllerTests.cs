@@ -389,4 +389,81 @@ public class DeliveriesControllerTests
         // Assert
         result.Should().BeOfType<OkObjectResult>();
     }
+
+    [Theory]
+    [InlineData("ShopOwner")]
+    [InlineData("SalesRep")]
+    [InlineData("AreaManager")]
+    [InlineData("AgencyOperator")]
+    public async Task GetDeliveryById_ReturnsNotFound_WhenWrongScope(string role)
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        var job = CreateTestJob(DeliveryStatus.Assigned); 
+        job.Assign(Guid.NewGuid(), "Other Rep", DateOnly.MaxValue, "sys", "sys"); 
+        
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        // specifically setting up caller scope to mismatch
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>(), "test"));
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", $"PRIMARY/{role}")
+        ], "TestAuth"));
+        
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+            
+        // Act
+        var result = await _controller.GetDeliveryById(jobId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsForbid_WhenWrongShopScope()
+    {
+        // Arrange
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", "PRIMARY/ShopOwner")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+        
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>(), "test"));
+
+        var otherShopId = Guid.NewGuid();
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, otherShopId, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsForbid_WhenWrongSalesRepScope()
+    {
+        // Arrange
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", "PRIMARY/SalesRep")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+        
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>(), "test"));
+
+        var otherSalesRepId = Guid.NewGuid();
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, otherSalesRepId, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+    }
 }

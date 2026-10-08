@@ -244,10 +244,7 @@ public class DeliveriesController : ControllerBase
         var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
         
 
-        var roles = User.Claims.Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
-                              .Select(c => c.Value.Contains('/') ? c.Value.Split('/')[1] : c.Value)
-                              .ToList();
-
+        var roles = GetUserRoles();
         var isCompanyAdmin = roles.Contains(SelloraRoles.SystemAdmin) || roles.Contains(SelloraRoles.CompanyAdmin);
         var isAreaManager = roles.Contains(SelloraRoles.AreaManager);
         var isAgencyOperator = roles.Contains(SelloraRoles.AgencyOperator);
@@ -312,20 +309,22 @@ public class DeliveriesController : ControllerBase
         }
 
         var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
-        var isCompanyAdmin = User.IsInRole(SelloraRoles.SystemAdmin) || User.IsInRole(SelloraRoles.CompanyAdmin);
+        
+        var roles = GetUserRoles();
+        var isCompanyAdmin = roles.Contains(SelloraRoles.SystemAdmin) || roles.Contains(SelloraRoles.CompanyAdmin);
         
         if (!isCompanyAdmin)
         {
-            if (User.IsInRole(SelloraRoles.ShopOwner) && job.ShopId != callerScope?.ShopId)
+            if (roles.Contains(SelloraRoles.ShopOwner) && job.ShopId != callerScope?.ShopId)
                 return NotFound();
             
-            if (User.IsInRole(SelloraRoles.SalesRep) && job.AssignedRepId != callerScope?.SalesRepId)
+            if (roles.Contains(SelloraRoles.SalesRep) && job.AssignedRepId != callerScope?.SalesRepId)
                 return NotFound();
             
-            if (User.IsInRole(SelloraRoles.AgencyOperator) && job.AgencyId != callerScope?.AgencyId)
+            if (roles.Contains(SelloraRoles.AgencyOperator) && job.AgencyId != callerScope?.AgencyId)
                 return NotFound();
             
-            if (User.IsInRole(SelloraRoles.AreaManager) && (callerScope?.ProvinceIds == null || !callerScope.ProvinceIds.Contains(job.ProvinceId)))
+            if (roles.Contains(SelloraRoles.AreaManager) && (callerScope?.ProvinceIds == null || !callerScope.ProvinceIds.Contains(job.ProvinceId)))
                 return NotFound();
         }
 
@@ -379,6 +378,14 @@ public class DeliveriesController : ControllerBase
         );
 
         return Ok(dto);
+    }
+
+    private List<string> GetUserRoles()
+    {
+        return User.Claims
+            .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+            .Select(c => c.Value.Contains('/') ? c.Value.Split('/')[1] : c.Value)
+            .ToList();
     }
 }
 
