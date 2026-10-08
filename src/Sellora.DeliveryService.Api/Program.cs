@@ -44,6 +44,7 @@ try
         {
             options.Authority = builder.Configuration["Jwt:Authority"];
             options.Audience = builder.Configuration["Jwt:Audience"];
+            options.RequireHttpsMetadata = false;
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
@@ -51,9 +52,28 @@ try
                 ValidateLifetime = true,
                 RoleClaimType = "roles"
             };
+
+            // DEV HACK: Bypass SSL validation for self-signed WSO2 server
+            // In production, WSO2 should have a valid SSL certificate.
+            options.BackchannelHttpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
         });
 
     builder.Services.AddAuthorization(RolePolicies.Register);
+
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("AllowFrontend",
+            policy =>
+            {
+                policy.WithOrigins("http://localhost:5173", "https://localhost:5173")
+                      .AllowAnyHeader()
+                      .AllowAnyMethod()
+                      .AllowCredentials();
+            });
+    });
 
     builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -69,8 +89,10 @@ try
         await db.Database.MigrateAsync();
     }
 
+    app.UseMiddleware<ExceptionMiddleware>();
     app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseSerilogRequestLogging();
+    app.UseCors("AllowFrontend");
     app.UseAuthentication();
     app.UseAuthorization();
     app.UseMiddleware<CallerScopeMiddleware>();

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
 using Sellora.DeliveryService.Application.Dependencies;
+using System.Net.Http;
 
 namespace Sellora.DeliveryService.Infrastructure.Dependencies;
 
@@ -17,6 +18,12 @@ public static class DependencyRegistration
 
         var builder = services.AddHttpClient<IOrganizationClient, OrganizationClient>(client =>
                 client.BaseAddress = BaseAddress(options.Organization, "Organization"))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                // DEV: bypass self-signed cert on WSO2 APIM instance.
+                // In production the APIM will carry a valid CA-signed cert.
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            })
             .AddResilience("organization", options.Organization, options.CircuitBreaker);
 
         return builder;
