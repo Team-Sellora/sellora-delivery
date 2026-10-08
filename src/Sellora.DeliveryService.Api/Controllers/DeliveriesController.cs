@@ -224,6 +224,156 @@ public class DeliveriesController : ControllerBase
 
         return NoContent();
     }
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> GetDeliveries(
+        [FromQuery] string[]? status,
+        [FromQuery] DateOnly? scheduledDateFrom,
+        [FromQuery] DateOnly? scheduledDateTo,
+        [FromQuery] Guid? salesRepId,
+        [FromQuery] Guid? shopId,
+        [FromQuery] Guid? orderId,
+        [FromQuery] bool includeHandovers = false,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
+        var isCompanyAdmin = User.IsInRole(SelloraRoles.SystemAdmin) || User.IsInRole(SelloraRoles.CompanyAdmin);
+        var isAreaManager = User.IsInRole(SelloraRoles.AreaManager);
+        var isAgencyOperator = User.IsInRole(SelloraRoles.AgencyOperator);
+        var isSalesRep = User.IsInRole(SelloraRoles.SalesRep);
+        var isShopOwner = User.IsInRole(SelloraRoles.ShopOwner);
+
+        if (!isCompanyAdmin)
+        {
+            if (isShopOwner && shopId.HasValue && shopId.Value != callerScope?.ShopId)
+            {
+                return Forbid();
+            }
+
+            if (isSalesRep && salesRepId.HasValue && salesRepId.Value != callerScope?.SalesRepId)
+            {
+                return Forbid();
+            }
+        }
+
+        var query = new DeliveryJobQuery
+        {
+            Statuses = status,
+            ScheduledDateFrom = scheduledDateFrom,
+            ScheduledDateTo = scheduledDateTo,
+            SalesRepId = salesRepId,
+            ShopId = shopId,
+            OrderId = orderId,
+            IncludeHandovers = includeHandovers,
+            Page = page,
+            PageSize = pageSize,
+            IsCompanyAdmin = isCompanyAdmin,
+            ScopeAgencyId = isAgencyOperator ? callerScope?.AgencyId : null,
+            ScopeSalesRepId = isSalesRep ? callerScope?.SalesRepId : null,
+            ScopeShopId = isShopOwner ? callerScope?.ShopId : null,
+            ScopeProvinceIds = isAreaManager ? callerScope?.ProvinceIds : null
+        };
+
+        var (items, totalCount) = await _repository.ListAsync(query, ct);
+
+        var dtos = items.Select(j => new DeliveryListItemDto(
+            j.DeliveryJobId,
+            j.DeliveryReference,
+            j.OrderReference,
+            j.ShopName,
+            j.TerritoryId,
+            j.Status.ToString(),
+            j.ScheduledDate,
+            j.AssignedRepName,
+            j.AgencyName)).ToList();
+
+        return Ok(new DeliveryListResponse(dtos, page, pageSize, totalCount));
+    }
+
+    [HttpGet("{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> GetDeliveryById(Guid id, CancellationToken ct)
+    {
+        var job = await _repository.GetByIdWithDetailsAsync(id, ct);
+        if (job == null)
+        {
+            return NotFound();
+        }
+
+        var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
+        var isCompanyAdmin = User.IsInRole(SelloraRoles.SystemAdmin) || User.IsInRole(SelloraRoles.CompanyAdmin);
+        
+        if (!isCompanyAdmin)
+        {
+            if (User.IsInRole(SelloraRoles.ShopOwner) && job.ShopId != callerScope?.ShopId)
+                return NotFound();
+            
+            if (User.IsInRole(SelloraRoles.SalesRep) && job.AssignedRepId != callerScope?.SalesRepId)
+                return NotFound();
+            
+            if (User.IsInRole(SelloraRoles.AgencyOperator) && job.AgencyId != callerScope?.AgencyId)
+                return NotFound();
+            
+            if (User.IsInRole(SelloraRoles.AreaManager) && (callerScope?.ProvinceIds == null || !callerScope.ProvinceIds.Contains(job.ProvinceId)))
+                return NotFound();
+        }
+
+        // Ordered oldest-first for a typical timeline UI
+        var history = job.StatusHistory
+            .OrderBy(h => h.OccurredAt)
+            .Select(h => new DeliveryStatusHistoryDto(
+                h.ToStatus.ToString(),
+                h.ActorRole,
+                h.OccurredAt,
+                h.Reason))
+            .ToList();
+
+        var lines = job.Lines.Select(l => new DeliveryLineDto(
+            l.DeliveryJobLineId,
+            l.ProductId,
+            l.ProductName,
+            l.Quantity,
+            l.UnitPrice,
+            l.LineTotal,
+            l.Quantity // Placeholder
+        )).ToList();
+
+        var dto = new DeliveryDetailResponse(
+            job.DeliveryJobId,
+            job.DeliveryReference,
+            job.OrderId,
+            job.OrderReference,
+            job.FulfilmentType,
+            job.ShopId,
+            job.ShopName,
+            job.ShopOwnerName,
+            job.ShopOwnerEmail,
+            job.AgencyId,
+            job.AgencyName,
+            job.AgencyEmail,
+            job.TerritoryId,
+            job.ProvinceId,
+            job.Total,
+            job.Currency,
+            job.Status.ToString(),
+            job.AssignedRepId,
+            job.AssignedRepName,
+            job.ScheduledDate,
+            job.DeliveredAt,
+            job.CreatedAt,
+            job.Version,
+            lines,
+            history,
+            null // Placeholder
+        );
+
+        return Ok(dto);
+    }
 }
 
 public class AssignDeliveryRequest
@@ -238,3 +388,66 @@ public class UpdateDeliveryStatusRequest
     public string? Reason { get; set; }
     public uint Version { get; set; }
 }
+
+public record DeliveryListResponse(
+    IReadOnlyList<DeliveryListItemDto> Items,
+    int Page,
+    int PageSize,
+    int TotalCount);
+
+public record DeliveryListItemDto(
+    Guid Id,
+    string DeliveryReference,
+    string OrderReference,
+    string ShopName,
+    Guid TerritoryId,
+    string Status,
+    DateOnly? ScheduledDate,
+    string? AssignedRepName,
+    string AgencyName);
+
+public record DeliveryDetailResponse(
+    Guid Id,
+    string DeliveryReference,
+    Guid OrderId,
+    string OrderReference,
+    string FulfilmentType,
+    Guid ShopId,
+    string ShopName,
+    string ShopOwnerName,
+    string ShopOwnerEmail,
+    Guid AgencyId,
+    string AgencyName,
+    string AgencyEmail,
+    Guid TerritoryId,
+    Guid ProvinceId,
+    decimal Total,
+    string Currency,
+    string Status,
+    Guid? AssignedRepId,
+    string? AssignedRepName,
+    DateOnly? ScheduledDate,
+    DateTimeOffset? DeliveredAt,
+    DateTimeOffset CreatedAt,
+    uint Version,
+    IReadOnlyList<DeliveryLineDto> Lines,
+    IReadOnlyList<DeliveryStatusHistoryDto> History,
+    object? Confirmation
+);
+
+public record DeliveryLineDto(
+    Guid LineId,
+    Guid ProductId,
+    string ProductName,
+    int Quantity,
+    decimal UnitPrice,
+    decimal LineTotal,
+    int ReturnableQuantity
+);
+
+public record DeliveryStatusHistoryDto(
+    string status,
+    string actorRole,
+    DateTimeOffset occurredAt,
+    string? reason
+);
