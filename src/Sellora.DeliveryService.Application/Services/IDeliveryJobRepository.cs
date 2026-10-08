@@ -8,4 +8,6 @@ public interface IDeliveryJobRepository
     Task<DeliveryJob?> GetByIdAsync(Guid deliveryJobId, CancellationToken ct = default);
     void SetOriginalVersion(DeliveryJob job, uint version);
     Task SaveChangesAsync(CancellationToken ct = default);
+    Task<DeliveryJob?> GetByIdWithDetailsAsync(Guid deliveryJobId, CancellationToken ct = default);
+    Task<(IReadOnlyList<DeliveryJob> Items, int TotalCount)> ListAsync(DeliveryJobQuery query, CancellationToken ct = default);
 }
