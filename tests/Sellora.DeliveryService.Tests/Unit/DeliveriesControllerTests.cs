@@ -361,4 +361,32 @@ public class DeliveriesControllerTests
         _mockOutboxWriter.Verify(w => w.Write(It.IsAny<OutboxMessage>()), Times.Once);
         _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+    [Fact]
+    public async Task GetDeliveries_ReturnsOkResult_WhenValid()
+    {
+        // Arrange
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<DeliveryJob> { CreateTestJob() }, 1));
+            
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveryById_ReturnsOkResult_WhenValid()
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestJob());
+            
+        // Act
+        var result = await _controller.GetDeliveryById(jobId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
 }
