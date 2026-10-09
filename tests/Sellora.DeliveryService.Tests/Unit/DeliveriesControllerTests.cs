@@ -32,7 +32,6 @@ public class DeliveriesControllerTests
         _controller = new DeliveriesController(
             _mockRepository.Object, 
             _mockOrganizationClient.Object,
-            _mockTenantContext.Object,
             _mockOutboxWriter.Object);
             
         var user = new ClaimsPrincipal(new ClaimsIdentity([
@@ -361,4 +360,270 @@ public class DeliveriesControllerTests
         _mockOutboxWriter.Verify(w => w.Write(It.IsAny<OutboxMessage>()), Times.Once);
         _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+    [Fact]
+    public async Task GetDeliveries_ReturnsOkResult_WhenValid()
+    {
+        // Arrange
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<DeliveryJob> { CreateTestJob() }, 1));
+            
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveryById_ReturnsOkResult_WhenValid()
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestJob());
+            
+        // Act
+        var result = await _controller.GetDeliveryById(jobId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Theory]
+    [InlineData("ShopOwner")]
+    [InlineData("SalesRep")]
+    [InlineData("AreaManager")]
+    [InlineData("AgencyOperator")]
+    public async Task GetDeliveryById_ReturnsNotFound_WhenWrongScope(string role)
+    {
+        // Arrange
+        var jobId = Guid.NewGuid();
+        var job = CreateTestJob(DeliveryStatus.Assigned); 
+        job.Assign(Guid.NewGuid(), "Other Rep", DateOnly.MaxValue, "sys", "sys"); 
+        
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        // specifically setting up caller scope to mismatch
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>(), "test"));
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", $"PRIMARY/{role}")
+        ], "TestAuth"));
+        
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+            
+        // Act
+        var result = await _controller.GetDeliveryById(jobId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsForbid_WhenWrongShopScope()
+    {
+        // Arrange
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", "PRIMARY/ShopOwner")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+        
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>(), "test"));
+
+        var otherShopId = Guid.NewGuid();
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, otherShopId, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsForbid_WhenWrongSalesRepScope()
+    {
+        // Arrange
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", "PRIMARY/SalesRep")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+        
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>(), "test"));
+
+        var otherSalesRepId = Guid.NewGuid();
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, otherSalesRepId, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsOk_WhenCompanyAdmin()
+    {
+        // Arrange — CompanyAdmin bypasses all scope checks and goes straight to ListAsync
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "admin-user-id"),
+            new Claim("roles", "PRIMARY/CompanyAdmin")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, null, Array.Empty<Guid>(), "admin"));
+
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<DeliveryJob> { CreateTestJob() }, 1));
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+        _mockRepository.Verify(r => r.ListAsync(
+            It.Is<DeliveryJobQuery>(q => q.IsCompanyAdmin == true),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDeliveryById_ReturnsOk_WhenCompanyAdmin()
+    {
+        // Arrange — CompanyAdmin bypasses scope checks and receives the full DTO
+        var jobId = Guid.NewGuid();
+        var job = CreateTestJob();
+
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "admin-user-id"),
+            new Claim("roles", "PRIMARY/CompanyAdmin")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, null, Array.Empty<Guid>(), "admin"));
+
+        // Act
+        var result = await _controller.GetDeliveryById(jobId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsOk_WhenRoleHasNoSlashPrefix()
+    {
+        // Arrange — tests the GetUserRoles() branch where claim value has NO '/' prefix
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", "AgencyOperator")  // no "PRIMARY/" prefix
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, Guid.NewGuid(), null, Array.Empty<Guid>(), "test"));
+
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<DeliveryJob>(), 0));
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveryById_ReturnsNotFound_WhenDeliveryNotFound()
+    {
+        var deliveryId = Guid.NewGuid();
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(deliveryId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DeliveryJob?)null);
+
+        var result = await _controller.GetDeliveryById(deliveryId, CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public void DeliveryDtoRecords_PropertiesCanBeRead()
+    {
+        var lineDto = new DeliveryLineDto(Guid.NewGuid(), Guid.NewGuid(), "Product A", 2, 10.5m, 21.0m, 2);
+        lineDto.LineId.Should().NotBeEmpty();
+        lineDto.ProductId.Should().NotBeEmpty();
+        lineDto.ProductName.Should().Be("Product A");
+        lineDto.Quantity.Should().Be(2);
+        lineDto.UnitPrice.Should().Be(10.5m);
+        lineDto.LineTotal.Should().Be(21.0m);
+        lineDto.ReturnableQuantity.Should().Be(2);
+
+        var historyDto = new DeliveryStatusHistoryDto("Pending", "ShopOwner", DateTimeOffset.UtcNow, "initial");
+        historyDto.status.Should().Be("Pending");
+        historyDto.actorRole.Should().Be("ShopOwner");
+        historyDto.occurredAt.Should().BeBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+        historyDto.reason.Should().Be("initial");
+
+        var itemDto = new DeliveryListItemDto(
+            Guid.NewGuid(), "DEL-001", "ORD-001", "Shop 1", Guid.NewGuid(), "Pending",
+            new DateOnly(2026, 10, 10), "Rep Name", "Agency Name");
+        itemDto.Id.Should().NotBeEmpty();
+        itemDto.DeliveryReference.Should().Be("DEL-001");
+        itemDto.OrderReference.Should().Be("ORD-001");
+        itemDto.ShopName.Should().Be("Shop 1");
+        itemDto.TerritoryId.Should().NotBeEmpty();
+        itemDto.Status.Should().Be("Pending");
+        itemDto.ScheduledDate.Should().Be(new DateOnly(2026, 10, 10));
+        itemDto.AssignedRepName.Should().Be("Rep Name");
+        itemDto.AgencyName.Should().Be("Agency Name");
+
+        var listResponse = new DeliveryListResponse([itemDto], 1, 20, 1);
+        listResponse.Items.Should().HaveCount(1);
+        listResponse.Page.Should().Be(1);
+        listResponse.PageSize.Should().Be(20);
+        listResponse.TotalCount.Should().Be(1);
+
+        var detailResponse = new DeliveryDetailResponse(
+            Guid.NewGuid(), "DEL-001", Guid.NewGuid(), "ORD-001", "ScheduledDelivery",
+            Guid.NewGuid(), "Shop 1", "Owner", "owner@test.com",
+            Guid.NewGuid(), "Agency 1", "agency@test.com",
+            Guid.NewGuid(), Guid.NewGuid(), 100m, "LKR", "Pending",
+            Guid.NewGuid(), "Rep Name", new DateOnly(2026, 10, 10), null,
+            DateTimeOffset.UtcNow, 1, [lineDto], [historyDto], null);
+
+        detailResponse.Id.Should().NotBeEmpty();
+        detailResponse.DeliveryReference.Should().Be("DEL-001");
+        detailResponse.OrderId.Should().NotBeEmpty();
+        detailResponse.OrderReference.Should().Be("ORD-001");
+        detailResponse.FulfilmentType.Should().Be("ScheduledDelivery");
+        detailResponse.ShopId.Should().NotBeEmpty();
+        detailResponse.ShopName.Should().Be("Shop 1");
+        detailResponse.ShopOwnerName.Should().Be("Owner");
+        detailResponse.ShopOwnerEmail.Should().Be("owner@test.com");
+        detailResponse.AgencyId.Should().NotBeEmpty();
+        detailResponse.AgencyName.Should().Be("Agency 1");
+        detailResponse.AgencyEmail.Should().Be("agency@test.com");
+        detailResponse.TerritoryId.Should().NotBeEmpty();
+        detailResponse.ProvinceId.Should().NotBeEmpty();
+        detailResponse.Total.Should().Be(100m);
+        detailResponse.Currency.Should().Be("LKR");
+        detailResponse.Status.Should().Be("Pending");
+        detailResponse.AssignedRepId.Should().NotBeEmpty();
+        detailResponse.AssignedRepName.Should().Be("Rep Name");
+        detailResponse.ScheduledDate.Should().Be(new DateOnly(2026, 10, 10));
+        detailResponse.DeliveredAt.Should().BeNull();
+        detailResponse.CreatedAt.Should().BeBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+        detailResponse.Version.Should().Be(1);
+        detailResponse.Lines.Should().HaveCount(1);
+        detailResponse.History.Should().HaveCount(1);
+        detailResponse.Confirmation.Should().BeNull();
+    }
 }
+

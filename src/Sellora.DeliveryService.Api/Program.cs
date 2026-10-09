@@ -44,6 +44,7 @@ try
         {
             options.Authority = builder.Configuration["Jwt:Authority"];
             options.Audience = builder.Configuration["Jwt:Audience"];
+            options.RequireHttpsMetadata = false;
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
@@ -54,6 +55,18 @@ try
         });
 
     builder.Services.AddAuthorization(RolePolicies.Register);
+
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("AllowFrontend",
+            policy =>
+            {
+                policy.WithOrigins("http://localhost:5173", "https://localhost:5173")
+                      .AllowAnyHeader()
+                      .AllowAnyMethod()
+                      .AllowCredentials();
+            });
+    });
 
     builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -69,8 +82,10 @@ try
         await db.Database.MigrateAsync();
     }
 
+    app.UseMiddleware<ExceptionMiddleware>();
     app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseSerilogRequestLogging();
+    app.UseCors("AllowFrontend");
     app.UseAuthentication();
     app.UseAuthorization();
     app.UseMiddleware<CallerScopeMiddleware>();
@@ -96,4 +111,7 @@ finally
     Log.CloseAndFlush();
 }
 
-public partial class Program { }
+public partial class Program
+{
+    protected Program() { }
+}
