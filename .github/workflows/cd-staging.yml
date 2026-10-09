@@ -1,0 +1,50 @@
+name: CD - Deploy Staging
+
+on:
+  workflow_call:
+    secrets:
+      AZURE_STAGING_PUBLISH_PROFILE:
+        required: true
+
+jobs:
+  deploy-staging:
+    name: Deploy to Azure staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read
+
+    steps:
+      - name: Deploy image that passed CI
+        uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
+        with:
+          app-name: sellora-delivery
+          publish-profile: ${{ secrets.AZURE_STAGING_PUBLISH_PROFILE }}
+          images: index.docker.io/naveentharuka/sellora-delivery:dev-${{ github.sha }}
+
+      - name: Validate staging startup
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..20}; do
+            STATUS=$(curl \
+              --silent \
+              --show-error \
+              --max-time 10 \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              "https://sellora-delivery-ezfshqckchege7gb.eastasia-01.azurewebsites.net/health" || true)
+
+            if [ "$STATUS" = "200" ]; then
+              echo "Staging startup validation passed: /health=200"
+              exit 0
+            fi
+
+            echo "Attempt $attempt -> /health=${STATUS:-unavailable}"
+            sleep 15
+          done
+
+          echo "Staging deployment failed health validation."
+          exit 1

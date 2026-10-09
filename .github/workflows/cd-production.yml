@@ -1,0 +1,101 @@
+name: CD - Deploy Production
+
+# Manual only. Do not add a push trigger until a separate production app exists.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type DEPLOY to confirm a production deployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delivery-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    name: Deploy to Azure production
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'DEPLOY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Require a separate production app
+        shell: bash
+        env:
+          APP_NAME: ${{ vars.AZURE_PRODUCTION_APP_NAME }}
+          BASE_URL: ${{ vars.AZURE_PRODUCTION_BASE_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$APP_NAME" ] || [ -z "$BASE_URL" ]; then
+            echo "Configure AZURE_PRODUCTION_APP_NAME and AZURE_PRODUCTION_BASE_URL before deploying."
+            exit 1
+          fi
+
+          if [ "$APP_NAME" = "sellora-delivery" ]; then
+            echo "The current sellora-delivery app is staging; production must use a different app."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push production image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: naveentharuka/sellora-delivery:prod-${{ github.sha }}
+
+      - name: Deploy production image
+        uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
+        with:
+          app-name: ${{ vars.AZURE_PRODUCTION_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PRODUCTION_PUBLISH_PROFILE }}
+          images: index.docker.io/naveentharuka/sellora-delivery:prod-${{ github.sha }}
+
+      - name: Validate production startup
+        shell: bash
+        env:
+          BASE_URL: ${{ vars.AZURE_PRODUCTION_BASE_URL }}
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..20}; do
+            STATUS=$(curl \
+              --silent \
+              --show-error \
+              --max-time 10 \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              "${BASE_URL%/}/health" || true)
+
+            if [ "$STATUS" = "200" ]; then
+              echo "Production startup validation passed: /health=200"
+              exit 0
+            fi
+
+            echo "Attempt $attempt -> /health=${STATUS:-unavailable}"
+            sleep 15
+          done
+
+          echo "Production deployment failed health validation."
+          exit 1
