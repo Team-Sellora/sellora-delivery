@@ -62,6 +62,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: BUILD_COMMIT_SHA=${{ github.sha }}
           push: true
           tags: naveentharuka/sellora-delivery:prod-${{ github.sha }}
 
@@ -80,20 +81,18 @@ jobs:
           set -euo pipefail
 
           for attempt in {1..20}; do
-            STATUS=$(curl \
+            RESPONSE=$(curl \
               --silent \
               --show-error \
               --max-time 10 \
-              --output /dev/null \
-              --write-out "%{http_code}" \
               "${BASE_URL%/}/health" || true)
 
-            if [ "$STATUS" = "200" ]; then
-              echo "Production startup validation passed: /health=200"
+            if jq -e --arg sha "${{ github.sha }}" '.status == "healthy" and .revision == $sha' <<< "$RESPONSE" >/dev/null 2>&1; then
+              echo "Production startup validation passed for commit ${{ github.sha }}"
               exit 0
             fi
 
-            echo "Attempt $attempt -> /health=${STATUS:-unavailable}"
+            echo "Attempt $attempt -> expected commit ${{ github.sha }}, response: ${RESPONSE:-unavailable}"
             sleep 15
           done
 

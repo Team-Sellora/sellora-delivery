@@ -77,7 +77,12 @@ try
 
     app.MapControllers();
 
-    app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "sellora-delivery" }))
+    app.MapGet("/health", () => Results.Ok(new
+    {
+        status = "healthy",
+        service = "sellora-delivery",
+        revision = Environment.GetEnvironmentVariable("BUILD_COMMIT_SHA") ?? "unknown"
+    }))
         .AllowAnonymous();
 
     app.Run();

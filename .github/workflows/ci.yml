@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -46,6 +46,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: BUILD_COMMIT_SHA=${{ github.sha }}
           push: true
           tags: naveentharuka/sellora-delivery:dev-${{ github.sha }}
 

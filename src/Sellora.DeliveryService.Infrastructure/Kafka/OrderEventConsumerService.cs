@@ -204,7 +204,7 @@ internal class OrderEventConsumerService(
         OrderConfirmedEvent confirmed;
         try
         {
-            confirmed = JsonSerializer.Deserialize<OrderConfirmedEvent>(result.Message.Value, JsonOpts)!;
+            confirmed = OrderConfirmedWireEvent.Parse(result.Message.Value);
         }
         catch (JsonException ex)
         {
