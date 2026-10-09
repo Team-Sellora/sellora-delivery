@@ -466,4 +466,79 @@ public class DeliveriesControllerTests
         // Assert
         result.Should().BeOfType<ForbidResult>();
     }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsOk_WhenCompanyAdmin()
+    {
+        // Arrange — CompanyAdmin bypasses all scope checks and goes straight to ListAsync
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "admin-user-id"),
+            new Claim("roles", "PRIMARY/CompanyAdmin")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, null, Array.Empty<Guid>(), "admin"));
+
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<DeliveryJob> { CreateTestJob() }, 1));
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+        _mockRepository.Verify(r => r.ListAsync(
+            It.Is<DeliveryJobQuery>(q => q.IsCompanyAdmin == true),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDeliveryById_ReturnsOk_WhenCompanyAdmin()
+    {
+        // Arrange — CompanyAdmin bypasses scope checks and receives the full DTO
+        var jobId = Guid.NewGuid();
+        var job = CreateTestJob();
+
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "admin-user-id"),
+            new Claim("roles", "PRIMARY/CompanyAdmin")
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, null, Array.Empty<Guid>(), "admin"));
+
+        // Act
+        var result = await _controller.GetDeliveryById(jobId, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_ReturnsOk_WhenRoleHasNoSlashPrefix()
+    {
+        // Arrange — tests the GetUserRoles() branch where claim value has NO '/' prefix
+        var user = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "test-user-id"),
+            new Claim("roles", "AgencyOperator")  // no "PRIMARY/" prefix
+        ], "TestAuth"));
+        _controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
+
+        _mockOrganizationClient.Setup(c => c.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, Guid.NewGuid(), null, Array.Empty<Guid>(), "test"));
+
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<DeliveryJob>(), 0));
+
+        // Act
+        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+    }
 }
