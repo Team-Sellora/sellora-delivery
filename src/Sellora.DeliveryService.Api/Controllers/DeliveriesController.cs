@@ -19,18 +19,15 @@ public class DeliveriesController : ControllerBase
 {
     private readonly IDeliveryJobRepository _repository;
     private readonly IOrganizationClient _organizationClient;
-    private readonly ITenantContext _tenantContext;
     private readonly IOutboxWriter _outboxWriter;
 
     public DeliveriesController(
         IDeliveryJobRepository repository,
         IOrganizationClient organizationClient,
-        ITenantContext tenantContext,
         IOutboxWriter outboxWriter)
     {
         _repository = repository;
         _organizationClient = organizationClient;
-        _tenantContext = tenantContext;
         _outboxWriter = outboxWriter;
     }
 
@@ -392,7 +389,10 @@ public class DeliveriesController : ControllerBase
 
 public class AssignDeliveryRequest
 {
+    [System.Text.Json.Serialization.JsonRequired]
     public Guid SalesRepId { get; set; }
+
+    [System.Text.Json.Serialization.JsonRequired]
     public DateOnly ScheduledDate { get; set; }
 }
 
@@ -400,6 +400,8 @@ public class UpdateDeliveryStatusRequest
 {
     public string Status { get; set; } = default!;
     public string? Reason { get; set; }
+
+    [System.Text.Json.Serialization.JsonRequired]
     public uint Version { get; set; }
 }
 

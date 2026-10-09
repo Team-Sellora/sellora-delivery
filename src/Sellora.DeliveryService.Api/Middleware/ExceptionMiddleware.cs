@@ -37,7 +37,7 @@ public sealed class ExceptionMiddleware
                 title = "A downstream service is temporarily unavailable.",
                 status = 503,
                 detail = ex.Message
-            });
+            }, cancellationToken: context.RequestAborted);
         }
         catch (DependencyRejectedException ex)
         {
@@ -53,7 +53,7 @@ public sealed class ExceptionMiddleware
                 title = "A downstream service rejected the request.",
                 status = 502,
                 detail = ex.Message
-            });
+            }, cancellationToken: context.RequestAborted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -68,7 +68,7 @@ public sealed class ExceptionMiddleware
                 type = "https://sellora.io/errors/internal",
                 title = "An unexpected error occurred.",
                 status = 500
-            });
+            }, cancellationToken: context.RequestAborted);
         }
     }
 }

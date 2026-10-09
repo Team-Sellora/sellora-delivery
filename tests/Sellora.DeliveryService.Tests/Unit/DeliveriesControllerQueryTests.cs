@@ -31,7 +31,6 @@ public class DeliveriesControllerQueryTests
         _controller = new DeliveriesController(
             _repoMock.Object,
             _orgClientMock.Object,
-            _tenantMock.Object,
             _outboxMock.Object);
     }
 

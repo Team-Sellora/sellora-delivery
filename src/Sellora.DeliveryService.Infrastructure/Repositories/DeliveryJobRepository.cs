@@ -30,6 +30,7 @@ internal class DeliveryJobRepository(DeliveryDbContext db) : IDeliveryJobReposit
     public async Task<DeliveryJob?> GetByIdWithDetailsAsync(Guid deliveryJobId, CancellationToken ct = default)
     {
         return await db.DeliveryJobs
+            .AsSplitQuery()
             .Include(j => j.Lines)
             .Include(j => j.StatusHistory)
             .FirstOrDefaultAsync(x => x.DeliveryJobId == deliveryJobId, ct);
@@ -39,33 +40,54 @@ internal class DeliveryJobRepository(DeliveryDbContext db) : IDeliveryJobReposit
     {
         var q = db.DeliveryJobs.AsQueryable();
 
-        // Scope filters
-        if (!query.IsCompanyAdmin)
+        q = ApplyScopeFilters(q, query);
+        q = ApplyQueryFilters(q, query);
+
+        var totalCount = await q.CountAsync(ct);
+
+        var items = await q
+            .OrderBy(j => j.ScheduledDate.HasValue ? 0 : 1)
+            .ThenBy(j => j.ScheduledDate)
+            .ThenBy(j => j.CreatedAt)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
+
+    private static IQueryable<DeliveryJob> ApplyScopeFilters(IQueryable<DeliveryJob> q, DeliveryJobQuery query)
+    {
+        if (query.IsCompanyAdmin)
         {
-            if (query.ScopeShopId.HasValue)
-            {
-                q = q.Where(j => j.ShopId == query.ScopeShopId.Value);
-            }
-            else if (query.ScopeSalesRepId.HasValue)
-            {
-                q = q.Where(j => j.AssignedRepId == query.ScopeSalesRepId.Value);
-            }
-            else if (query.ScopeAgencyId.HasValue)
-            {
-                q = q.Where(j => j.AgencyId == query.ScopeAgencyId.Value);
-            }
-            else if (query.ScopeProvinceIds != null && query.ScopeProvinceIds.Any())
-            {
-                q = q.Where(j => query.ScopeProvinceIds.Contains(j.ProvinceId));
-            }
-            else
-            {
-                // Fallback: no scope -> no records
-                q = q.Where(j => false);
-            }
+            return q;
         }
 
-        // Query filters
+        if (query.ScopeShopId.HasValue)
+        {
+            return q.Where(j => j.ShopId == query.ScopeShopId.Value);
+        }
+
+        if (query.ScopeSalesRepId.HasValue)
+        {
+            return q.Where(j => j.AssignedRepId == query.ScopeSalesRepId.Value);
+        }
+
+        if (query.ScopeAgencyId.HasValue)
+        {
+            return q.Where(j => j.AgencyId == query.ScopeAgencyId.Value);
+        }
+
+        if (query.ScopeProvinceIds != null && query.ScopeProvinceIds.Any())
+        {
+            return q.Where(j => query.ScopeProvinceIds.Contains(j.ProvinceId));
+        }
+
+        return q.Where(j => false);
+    }
+
+    private static IQueryable<DeliveryJob> ApplyQueryFilters(IQueryable<DeliveryJob> q, DeliveryJobQuery query)
+    {
         if (query.Statuses != null && query.Statuses.Any())
         {
             var validStatuses = query.Statuses
@@ -108,16 +130,6 @@ internal class DeliveryJobRepository(DeliveryDbContext db) : IDeliveryJobReposit
             q = q.Where(j => j.FulfilmentType != "ImmediateCashSale");
         }
 
-        var totalCount = await q.CountAsync(ct);
-
-        var items = await q
-            .OrderBy(j => j.ScheduledDate.HasValue ? 0 : 1)
-            .ThenBy(j => j.ScheduledDate)
-            .ThenBy(j => j.CreatedAt)
-            .Skip((query.Page - 1) * query.PageSize)
-            .Take(query.PageSize)
-            .ToListAsync(ct);
-
-        return (items, totalCount);
+        return q;
     }
 }

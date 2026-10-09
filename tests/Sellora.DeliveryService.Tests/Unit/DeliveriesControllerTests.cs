@@ -32,7 +32,6 @@ public class DeliveriesControllerTests
         _controller = new DeliveriesController(
             _mockRepository.Object, 
             _mockOrganizationClient.Object,
-            _mockTenantContext.Object,
             _mockOutboxWriter.Object);
             
         var user = new ClaimsPrincipal(new ClaimsIdentity([
