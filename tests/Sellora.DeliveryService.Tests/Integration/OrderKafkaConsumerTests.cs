@@ -1,5 +1,6 @@
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -96,6 +97,29 @@ public class OrderKafkaConsumerTests
                         relay.Dispose();
                         deliveryConsumer.Close();
                     }
+
+                    // A malformed order event must be observable on the dead-letter topic,
+                    // rather than silently disappearing after the offset is committed.
+                    using var deadLetterConsumer = new ConsumerBuilder<string, string>(new ConsumerConfig
+                    {
+                        BootstrapServers = bootstrap,
+                        GroupId = $"delivery-dlq-test-{Guid.NewGuid():N}",
+                        AutoOffsetReset = AutoOffsetReset.Earliest
+                    }).Build();
+                    deadLetterConsumer.Subscribe("sellora.delivery.dead-letter.v1");
+                    await producer.ProduceAsync("sellora.order.v1", new Message<string, string>
+                    {
+                        Key = "invalid-order",
+                        Value = "{invalid json"
+                    });
+
+                    var deadLetter = deadLetterConsumer.Consume(TimeSpan.FromSeconds(20));
+                    Assert.NotNull(deadLetter);
+                    using var payload = JsonDocument.Parse(deadLetter.Message.Value);
+                    Assert.Equal("sellora.order.v1", payload.RootElement.GetProperty("SourceTopic").GetString());
+                    Assert.Equal("{invalid json", payload.RootElement.GetProperty("OriginalValue").GetString());
+                    Assert.StartsWith("DeserialiseFailure:", payload.RootElement.GetProperty("Reason").GetString());
+                    deadLetterConsumer.Close();
                     return;
                 }
                 await Task.Delay(500);
