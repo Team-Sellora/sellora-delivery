@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
 using Sellora.DeliveryService.Application.Dependencies;
-using System.Net.Http;
 
 namespace Sellora.DeliveryService.Infrastructure.Dependencies;
 

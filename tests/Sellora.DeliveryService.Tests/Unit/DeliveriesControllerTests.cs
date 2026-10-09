@@ -541,4 +541,90 @@ public class DeliveriesControllerTests
         // Assert
         result.Should().BeOfType<OkObjectResult>();
     }
+
+    [Fact]
+    public async Task GetDeliveryById_ReturnsNotFound_WhenDeliveryNotFound()
+    {
+        var deliveryId = Guid.NewGuid();
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(deliveryId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DeliveryJob?)null);
+
+        var result = await _controller.GetDeliveryById(deliveryId, CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public void DeliveryDtoRecords_PropertiesCanBeRead()
+    {
+        var lineDto = new DeliveryLineDto(Guid.NewGuid(), Guid.NewGuid(), "Product A", 2, 10.5m, 21.0m, 2);
+        lineDto.LineId.Should().NotBeEmpty();
+        lineDto.ProductId.Should().NotBeEmpty();
+        lineDto.ProductName.Should().Be("Product A");
+        lineDto.Quantity.Should().Be(2);
+        lineDto.UnitPrice.Should().Be(10.5m);
+        lineDto.LineTotal.Should().Be(21.0m);
+        lineDto.ReturnableQuantity.Should().Be(2);
+
+        var historyDto = new DeliveryStatusHistoryDto("Pending", "ShopOwner", DateTimeOffset.UtcNow, "initial");
+        historyDto.status.Should().Be("Pending");
+        historyDto.actorRole.Should().Be("ShopOwner");
+        historyDto.occurredAt.Should().BeBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+        historyDto.reason.Should().Be("initial");
+
+        var itemDto = new DeliveryListItemDto(
+            Guid.NewGuid(), "DEL-001", "ORD-001", "Shop 1", Guid.NewGuid(), "Pending",
+            new DateOnly(2026, 10, 10), "Rep Name", "Agency Name");
+        itemDto.Id.Should().NotBeEmpty();
+        itemDto.DeliveryReference.Should().Be("DEL-001");
+        itemDto.OrderReference.Should().Be("ORD-001");
+        itemDto.ShopName.Should().Be("Shop 1");
+        itemDto.TerritoryId.Should().NotBeEmpty();
+        itemDto.Status.Should().Be("Pending");
+        itemDto.ScheduledDate.Should().Be(new DateOnly(2026, 10, 10));
+        itemDto.AssignedRepName.Should().Be("Rep Name");
+        itemDto.AgencyName.Should().Be("Agency Name");
+
+        var listResponse = new DeliveryListResponse([itemDto], 1, 20, 1);
+        listResponse.Items.Should().HaveCount(1);
+        listResponse.Page.Should().Be(1);
+        listResponse.PageSize.Should().Be(20);
+        listResponse.TotalCount.Should().Be(1);
+
+        var detailResponse = new DeliveryDetailResponse(
+            Guid.NewGuid(), "DEL-001", Guid.NewGuid(), "ORD-001", "ScheduledDelivery",
+            Guid.NewGuid(), "Shop 1", "Owner", "owner@test.com",
+            Guid.NewGuid(), "Agency 1", "agency@test.com",
+            Guid.NewGuid(), Guid.NewGuid(), 100m, "LKR", "Pending",
+            Guid.NewGuid(), "Rep Name", new DateOnly(2026, 10, 10), null,
+            DateTimeOffset.UtcNow, 1, [lineDto], [historyDto], null);
+
+        detailResponse.Id.Should().NotBeEmpty();
+        detailResponse.DeliveryReference.Should().Be("DEL-001");
+        detailResponse.OrderId.Should().NotBeEmpty();
+        detailResponse.OrderReference.Should().Be("ORD-001");
+        detailResponse.FulfilmentType.Should().Be("ScheduledDelivery");
+        detailResponse.ShopId.Should().NotBeEmpty();
+        detailResponse.ShopName.Should().Be("Shop 1");
+        detailResponse.ShopOwnerName.Should().Be("Owner");
+        detailResponse.ShopOwnerEmail.Should().Be("owner@test.com");
+        detailResponse.AgencyId.Should().NotBeEmpty();
+        detailResponse.AgencyName.Should().Be("Agency 1");
+        detailResponse.AgencyEmail.Should().Be("agency@test.com");
+        detailResponse.TerritoryId.Should().NotBeEmpty();
+        detailResponse.ProvinceId.Should().NotBeEmpty();
+        detailResponse.Total.Should().Be(100m);
+        detailResponse.Currency.Should().Be("LKR");
+        detailResponse.Status.Should().Be("Pending");
+        detailResponse.AssignedRepId.Should().NotBeEmpty();
+        detailResponse.AssignedRepName.Should().Be("Rep Name");
+        detailResponse.ScheduledDate.Should().Be(new DateOnly(2026, 10, 10));
+        detailResponse.DeliveredAt.Should().BeNull();
+        detailResponse.CreatedAt.Should().BeBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+        detailResponse.Version.Should().Be(1);
+        detailResponse.Lines.Should().HaveCount(1);
+        detailResponse.History.Should().HaveCount(1);
+        detailResponse.Confirmation.Should().BeNull();
+    }
 }
+

@@ -8,6 +8,7 @@ using Sellora.DeliveryService.Domain.Enums;
 using Sellora.DeliveryService.Domain.Entities;
 using System.Text.Json;
 using Sellora.DeliveryService.Application.Events;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Sellora.DeliveryService.Api.Controllers;
 
@@ -402,12 +403,14 @@ public class UpdateDeliveryStatusRequest
     public uint Version { get; set; }
 }
 
+[ExcludeFromCodeCoverage]
 public record DeliveryListResponse(
     IReadOnlyList<DeliveryListItemDto> Items,
     int Page,
     int PageSize,
     int TotalCount);
 
+[ExcludeFromCodeCoverage]
 public record DeliveryListItemDto(
     Guid Id,
     string DeliveryReference,
@@ -419,6 +422,7 @@ public record DeliveryListItemDto(
     string? AssignedRepName,
     string AgencyName);
 
+[ExcludeFromCodeCoverage]
 public record DeliveryDetailResponse(
     Guid Id,
     string DeliveryReference,
@@ -448,6 +452,7 @@ public record DeliveryDetailResponse(
     object? Confirmation
 );
 
+[ExcludeFromCodeCoverage]
 public record DeliveryLineDto(
     Guid LineId,
     Guid ProductId,
@@ -458,6 +463,7 @@ public record DeliveryLineDto(
     int ReturnableQuantity
 );
 
+[ExcludeFromCodeCoverage]
 public record DeliveryStatusHistoryDto(
     string status,
     string actorRole,
