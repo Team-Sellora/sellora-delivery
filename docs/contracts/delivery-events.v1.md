@@ -105,6 +105,98 @@ All events on this topic carry the following headers:
 
 ---
 
+### `DeliveryConfirmed`
+
+**Published when:** A shop owner confirms delivery receipt of an order that was in `Delivered` status. (Audit-only; Notification does not consume this event).
+
+**Message key:** `OrderReference`
+
+#### Payload schema
+
+```json
+{
+  "eventId": "uuid",
+  "eventType": "DeliveryConfirmed",
+  "schemaVersion": "1.0",
+  "companyId": "uuid",
+  "deliveryId": "uuid",
+  "orderId": "uuid",
+  "orderReference": "string",
+  "occurredAt": "ISO 8601 timestamp",
+  "correlationId": "uuid | null",
+  "deliveryReference": "string",
+  "territoryId": "uuid",
+  "provinceId": "uuid",
+  "shop": {
+    "shopId": "uuid",
+    "name": "string",
+    "ownerName": "string",
+    "ownerEmail": "string"
+  },
+  "agency": {
+    "agencyId": "uuid",
+    "name": "string",
+    "email": "string"
+  },
+  "actor": {
+    "userId": "string",
+    "role": "ShopOwner"
+  },
+  "outcome": "Confirmed",
+  "note": "string | null",
+  "confirmedAt": "ISO 8601 timestamp"
+}
+```
+
+---
+
+### `DeliveryDisputed`
+
+**Published when:** A shop owner disputes a delivery of an order that was in `Delivered` status.
+
+**Message key:** `OrderReference`
+
+#### Payload schema
+
+```json
+{
+  "eventId": "uuid",
+  "eventType": "DeliveryDisputed",
+  "schemaVersion": "1.0",
+  "companyId": "uuid",
+  "deliveryId": "uuid",
+  "orderId": "uuid",
+  "orderReference": "string",
+  "occurredAt": "ISO 8601 timestamp",
+  "correlationId": "uuid | null",
+  "deliveryReference": "string",
+  "territoryId": "uuid",
+  "provinceId": "uuid",
+  "shop": {
+    "shopId": "uuid",
+    "name": "string",
+    "ownerName": "string",
+    "ownerEmail": "string"
+  },
+  "agency": {
+    "agencyId": "uuid",
+    "name": "string",
+    "email": "string"
+  },
+  "actor": {
+    "userId": "string",
+    "role": "ShopOwner"
+  },
+  "outcome": "Disputed",
+  "note": "string | null",
+  "disputeReason": "string",
+  "raisedByRole": "ShopOwner",
+  "disputedAt": "ISO 8601 timestamp"
+}
+```
+
+---
+
 ## Dead Letter Topic
 
 **Topic:** `sellora.delivery.dead-letter.v1`
