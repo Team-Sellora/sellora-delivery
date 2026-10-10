@@ -103,7 +103,7 @@ try
     app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "sellora-delivery" }))
         .AllowAnonymous();
 
-    app.Run();
+    await app.RunAsync();
 }
 catch (Exception ex) when (ex is not HostAbortedException)
 {
@@ -111,7 +111,7 @@ catch (Exception ex) when (ex is not HostAbortedException)
 }
 finally
 {
-    Log.CloseAndFlush();
+    await Log.CloseAndFlushAsync();
 }
 
 public partial class Program

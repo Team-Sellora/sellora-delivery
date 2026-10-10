@@ -15,7 +15,6 @@ public class DeliveryStatusChangedEventTests
         var deliveryReference = "REF-123";
         var orderId = Guid.NewGuid();
         var orderReference = "ORD-456";
-        var fulfilmentType = "Delivery";
         var agencyId = Guid.NewGuid();
         var agencyName = "Test Agency";
         var shopId = Guid.NewGuid();
