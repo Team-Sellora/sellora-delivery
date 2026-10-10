@@ -17,6 +17,7 @@ public class DeliveryDbContext : DbContext
     public DbSet<DeliveryJob> DeliveryJobs => Set<DeliveryJob>();
     public DbSet<DeliveryJobLine> DeliveryJobLines => Set<DeliveryJobLine>();
     public DbSet<DeliveryStatusHistory> DeliveryStatusHistories => Set<DeliveryStatusHistory>();
+    public DbSet<DeliveryConfirmation> DeliveryConfirmations => Set<DeliveryConfirmation>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<ProcessedDeliveryEvent> ProcessedDeliveryEvents => Set<ProcessedDeliveryEvent>();
 
@@ -33,6 +34,7 @@ public class DeliveryDbContext : DbContext
         modelBuilder.Entity<DeliveryJobLine>().HasQueryFilter(l => l.CompanyId == TenantId);
         modelBuilder.Entity<DeliveryStatusHistory>().HasQueryFilter(h => h.CompanyId == TenantId);
         modelBuilder.Entity<OutboxMessage>().HasQueryFilter(o => o.CompanyId == TenantId);
+        modelBuilder.Entity<DeliveryConfirmation>().HasQueryFilter(c => c.CompanyId == TenantId);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -54,6 +56,14 @@ public class DeliveryDbContext : DbContext
             if (entry.State == EntityState.Modified || entry.State == EntityState.Deleted)
             {
                 throw new InvalidOperationException("DeliveryStatusHistory is append-only and cannot be modified or deleted.");
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<DeliveryConfirmation>())
+        {
+            if (entry.State == EntityState.Modified || entry.State == EntityState.Deleted)
+            {
+                throw new InvalidOperationException("DeliveryConfirmation is append-only and cannot be modified or deleted.");
             }
         }
     }
