@@ -652,7 +652,8 @@ public record DeliveryListItemDto(
     string Status,
     DateOnly? ScheduledDate,
     string? AssignedRepName,
-    string AgencyName);
+    string AgencyName,
+    string? ConfirmationState = null);
 
 public class DeliveryConfirmationRequest
 {
