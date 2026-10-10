@@ -45,6 +45,10 @@ try
             options.Authority = builder.Configuration["Jwt:Authority"];
             options.Audience = builder.Configuration["Jwt:Audience"];
             options.RequireHttpsMetadata = false;
+            options.BackchannelHttpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
@@ -72,7 +76,11 @@ try
 
     builder.Services.AddDeliveryDependencies(builder.Configuration)
         .AddHttpMessageHandler<ForwardBearerTokenHandler>()
-        .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
+        .AddHttpMessageHandler<ForwardCorrelationIdHandler>()
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        });
 
     var app = builder.Build();
 
@@ -100,7 +108,7 @@ try
     }))
         .AllowAnonymous();
 
-    app.Run();
+    await app.RunAsync();
 }
 catch (Exception ex) when (ex is not HostAbortedException)
 {
@@ -108,7 +116,7 @@ catch (Exception ex) when (ex is not HostAbortedException)
 }
 finally
 {
-    Log.CloseAndFlush();
+    await Log.CloseAndFlushAsync();
 }
 
 public partial class Program
