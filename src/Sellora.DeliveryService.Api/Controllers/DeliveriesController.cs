@@ -282,16 +282,41 @@ public class DeliveriesController : ControllerBase
 
         var (items, totalCount) = await _repository.ListAsync(query, ct);
 
-        var dtos = items.Select(j => new DeliveryListItemDto(
-            j.DeliveryJobId,
-            j.DeliveryReference,
-            j.OrderReference,
-            j.ShopName,
-            j.TerritoryId,
-            j.Status.ToString(),
-            j.ScheduledDate,
-            j.AssignedRepName,
-            j.AgencyName)).ToList();
+        IReadOnlyDictionary<Guid, DeliveryConfirmation> confirmations = new Dictionary<Guid, DeliveryConfirmation>();
+        if (items.Count > 0)
+        {
+            var jobIds = items.Select(j => j.DeliveryJobId).ToList();
+            confirmations = await _repository.GetConfirmationsByJobIdsAsync(jobIds, ct)
+                ?? new Dictionary<Guid, DeliveryConfirmation>();
+        }
+
+        var dtos = items.Select(j =>
+        {
+            string? confirmationState = null;
+            if (j.FulfilmentType != "ImmediateCashSale")
+            {
+                if (confirmations.TryGetValue(j.DeliveryJobId, out var conf))
+                {
+                    confirmationState = conf.Type.ToString();
+                }
+                else if (j.Status == DeliveryStatus.Delivered)
+                {
+                    confirmationState = "Awaiting";
+                }
+            }
+
+            return new DeliveryListItemDto(
+                j.DeliveryJobId,
+                j.DeliveryReference,
+                j.OrderReference,
+                j.ShopName,
+                j.TerritoryId,
+                j.Status.ToString(),
+                j.ScheduledDate,
+                j.AssignedRepName,
+                j.AgencyName,
+                confirmationState);
+        }).ToList();
 
         return Ok(new DeliveryListResponse(dtos, page, pageSize, totalCount));
     }
@@ -346,6 +371,36 @@ public class DeliveriesController : ControllerBase
             l.Quantity // Placeholder
         )).ToList();
 
+        var confirmation = await _repository.GetConfirmationByJobIdAsync(id, ct);
+        ConfirmationStateDto? confirmationState = null;
+        if (job.FulfilmentType != "ImmediateCashSale")
+        {
+            if (confirmation != null)
+            {
+                confirmationState = new ConfirmationStateDto(
+                    confirmation.Type.ToString(),
+                    confirmation.Notes,
+                    confirmation.ConfirmedAt,
+                    confirmation.Type.ToString(),
+                    confirmation.Notes,
+                    confirmation.ConfirmedAt,
+                    confirmation.SignatureUrl
+                );
+            }
+            else if (job.Status == DeliveryStatus.Delivered)
+            {
+                confirmationState = new ConfirmationStateDto(
+                    "Awaiting",
+                    null,
+                    null,
+                    "Awaiting",
+                    null,
+                    null,
+                    null
+                );
+            }
+        }
+
         var dto = new DeliveryDetailResponse(
             job.DeliveryJobId,
             job.DeliveryReference,
@@ -372,10 +427,185 @@ public class DeliveriesController : ControllerBase
             job.Version,
             lines,
             history,
-            null // Placeholder
+            confirmationState
         );
 
         return Ok(dto);
+    }
+
+    [HttpPost("{id:guid}/confirmation")]
+    [Authorize]
+    public async Task<IActionResult> ConfirmDelivery(Guid id, [FromBody] DeliveryConfirmationRequest request, CancellationToken ct)
+    {
+        var roles = GetUserRoles();
+        if (!roles.Contains(SelloraRoles.ShopOwner) && !roles.Contains(SelloraRoles.SystemAdmin))
+        {
+            return Forbid();
+        }
+
+        var job = await _repository.GetByIdAsync(id, ct);
+        if (job == null)
+        {
+            return NotFound();
+        }
+
+        var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
+
+        // 1. job.ShopId == CallerScope.ShopId, otherwise 403
+        if (callerScope?.ShopId != null && job.ShopId != callerScope.ShopId)
+        {
+            return Forbid();
+        }
+
+        // 2. job.Status == Delivered, otherwise 409
+        if (job.Status != DeliveryStatus.Delivered)
+        {
+            return Conflict(new { detail = $"Delivery must be in Delivered status to be confirmed. Current status is {job.Status}." });
+        }
+
+        // 3. job.FulfilmentType != ImmediateCashSale, otherwise 409
+        if (job.FulfilmentType == "ImmediateCashSale")
+        {
+            return Conflict(new { detail = "ImmediateCashSale deliveries do not require confirmation." });
+        }
+
+        // 4. outcome == Disputed requires a non-blank note (max 1000 chars); missing/blank -> validation error
+        var requestedType = request.Outcome ?? request.Type;
+        if (string.IsNullOrWhiteSpace(requestedType) || !Enum.TryParse<ConfirmationType>(requestedType, true, out var confirmationType))
+        {
+            return BadRequest(new { detail = "Outcome must be Confirmed or Disputed." });
+        }
+
+        var notes = request.Note ?? request.Notes;
+        if (confirmationType == ConfirmationType.Disputed && string.IsNullOrWhiteSpace(notes))
+        {
+            return BadRequest(new { detail = "Notes are required when disputing a delivery." });
+        }
+
+        if (notes?.Length > 1000)
+        {
+            return BadRequest(new { detail = "Notes cannot exceed 1000 characters." });
+        }
+        
+        if (request.SignatureUrl?.Length > 2000)
+        {
+            return BadRequest(new { detail = "SignatureUrl cannot exceed 2000 characters." });
+        }
+
+        var existingConfirmation = await _repository.GetConfirmationByJobIdAsync(id, ct);
+        if (existingConfirmation != null)
+        {
+            if (existingConfirmation.Type == confirmationType)
+            {
+                return Ok(new ConfirmationStateDto(
+                    existingConfirmation.Type.ToString(),
+                    existingConfirmation.Notes,
+                    existingConfirmation.ConfirmedAt,
+                    existingConfirmation.Type.ToString(),
+                    existingConfirmation.Notes,
+                    existingConfirmation.ConfirmedAt,
+                    existingConfirmation.SignatureUrl
+                ));
+            }
+            return Conflict(new { detail = $"Delivery is already {existingConfirmation.Type} and cannot be changed." });
+        }
+
+        var confirmation = DeliveryConfirmation.Create(
+            job.DeliveryJobId,
+            job.CompanyId,
+            confirmationType,
+            notes,
+            request.SignatureUrl
+        );
+
+        await _repository.AddConfirmationAsync(confirmation, ct);
+
+        var userId = User.FindFirst("sub")?.Value ?? "unknown";
+        var role = roles.FirstOrDefault() ?? "ShopOwner";
+        var correlationId = HttpContext.Items["CorrelationId"]?.ToString();
+
+        string eventType = confirmationType == ConfirmationType.Confirmed ? "DeliveryConfirmed" : "DeliveryDisputed";
+        object eventPayload;
+
+        if (confirmationType == ConfirmationType.Confirmed)
+        {
+            eventPayload = DeliveryConfirmedEvent.Create(
+                companyId: job.CompanyId,
+                deliveryId: job.DeliveryJobId,
+                orderId: job.OrderId,
+                orderReference: job.OrderReference,
+                confirmedAt: confirmation.ConfirmedAt,
+                note: confirmation.Notes,
+                signatureUrl: confirmation.SignatureUrl,
+                shopId: job.ShopId,
+                shopName: job.ShopName,
+                shopOwnerName: job.ShopOwnerName,
+                shopOwnerEmail: job.ShopOwnerEmail,
+                agencyId: job.AgencyId,
+                agencyName: job.AgencyName,
+                agencyEmail: job.AgencyEmail,
+                deliveryReference: job.DeliveryReference,
+                territoryId: job.TerritoryId,
+                provinceId: job.ProvinceId,
+                actorUserId: userId,
+                actorRole: role,
+                correlationId: correlationId
+            );
+        }
+        else
+        {
+            eventPayload = DeliveryDisputedEvent.Create(
+                companyId: job.CompanyId,
+                deliveryId: job.DeliveryJobId,
+                orderId: job.OrderId,
+                orderReference: job.OrderReference,
+                disputedAt: confirmation.ConfirmedAt,
+                note: confirmation.Notes,
+                signatureUrl: confirmation.SignatureUrl,
+                shopId: job.ShopId,
+                shopName: job.ShopName,
+                shopOwnerName: job.ShopOwnerName,
+                shopOwnerEmail: job.ShopOwnerEmail,
+                agencyId: job.AgencyId,
+                agencyName: job.AgencyName,
+                agencyEmail: job.AgencyEmail,
+                deliveryReference: job.DeliveryReference,
+                territoryId: job.TerritoryId,
+                provinceId: job.ProvinceId,
+                actorUserId: userId,
+                actorRole: role,
+                correlationId: correlationId
+            );
+        }
+
+        var outboxMessage = new OutboxMessage(
+            job.CompanyId,
+            "sellora.delivery.v1",
+            job.OrderReference,
+            eventType,
+            System.Text.Json.JsonSerializer.Serialize(eventPayload)
+        );
+
+        _outboxWriter.Write(outboxMessage);
+
+        try
+        {
+            await _repository.SaveChangesAsync(ct);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            return Conflict(new { detail = "A confirmation already exists for this delivery." });
+        }
+
+        return Ok(new ConfirmationStateDto(
+            confirmation.Type.ToString(),
+            confirmation.Notes,
+            confirmation.ConfirmedAt,
+            confirmation.Type.ToString(),
+            confirmation.Notes,
+            confirmation.ConfirmedAt,
+            confirmation.SignatureUrl
+        ));
     }
 
     private List<string> GetUserRoles()
@@ -423,6 +653,27 @@ public record DeliveryListItemDto(
     DateOnly? ScheduledDate,
     string? AssignedRepName,
     string AgencyName);
+
+public class DeliveryConfirmationRequest
+{
+    public string? Type { get; set; }
+    public string? Outcome { get; set; }
+    
+    public string? Note { get; set; }
+    public string? Notes { get; set; }
+    public string? SignatureUrl { get; set; }
+}
+
+[ExcludeFromCodeCoverage]
+public record ConfirmationStateDto(
+    string State,
+    string? Note,
+    DateTimeOffset? Time,
+    string? Status = null,
+    string? Notes = null,
+    DateTimeOffset? ConfirmedAt = null,
+    string? SignatureUrl = null
+);
 
 [ExcludeFromCodeCoverage]
 public record DeliveryDetailResponse(
