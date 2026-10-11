@@ -58,4 +58,30 @@ public class DependencyRegistrationTests
         action.Should().Throw<InvalidOperationException>()
             .WithMessage("Dependencies:Organization:BaseUrl must be an absolute URL (got 'not-a-url').");
     }
+
+    [Fact]
+    public void AddDeliveryDependencies_WithInventoryBaseUrl_RegistersInventoryClient()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                {"Dependencies:Organization:BaseUrl", "http://org.com"},
+                {"Dependencies:Inventory:BaseUrl", "http://inv.com"},
+                {"Dependencies:Inventory:TimeoutSeconds", "5"},
+                {"Dependencies:CircuitBreaker:FailureRatio", "0.5"},
+                {"Dependencies:CircuitBreaker:MinimumThroughput", "10"},
+                {"Dependencies:CircuitBreaker:SamplingDurationSeconds", "10"},
+                {"Dependencies:CircuitBreaker:BreakDurationSeconds", "30"}
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddDeliveryDependencies(configuration);
+        var provider = services.BuildServiceProvider();
+
+        var factory = provider.GetRequiredService<IHttpClientFactory>();
+        var client = factory.CreateClient(nameof(IInventoryClient));
+        client.Should().NotBeNull();
+        client.BaseAddress.Should().Be(new Uri("http://inv.com/"));
+    }
 }

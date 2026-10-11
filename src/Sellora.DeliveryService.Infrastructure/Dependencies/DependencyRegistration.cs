@@ -64,6 +64,12 @@ public static class DependencyRegistration
                 $"Dependencies:{name}:BaseUrl must be an absolute URL (got '{endpoint.BaseUrl}').");
         }
 
-        return uri.AbsoluteUri.EndsWith('/') ? uri : new Uri(uri.AbsoluteUri + "/");
+        var builder = new UriBuilder(uri);
+        if (!builder.Path.EndsWith('/'))
+        {
+            builder.Path = string.Concat(builder.Path, '/');
+        }
+
+        return builder.Uri;
     }
 }

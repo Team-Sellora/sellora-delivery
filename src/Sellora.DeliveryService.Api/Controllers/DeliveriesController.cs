@@ -282,7 +282,7 @@ public class DeliveriesController : ControllerBase
             SalesRepId = filter.SalesRepId,
             ShopId = filter.ShopId,
             OrderId = filter.OrderId,
-            IncludeHandovers = filter.IncludeHandovers,
+            IncludeHandovers = filter.IncludeHandovers ?? false,
             Page = page,
             PageSize = pageSize,
             IsCompanyAdmin = IsCompanyAdmin(roles),
@@ -692,7 +692,7 @@ public class DeliveryListFilter
     public Guid? SalesRepId { get; set; }
     public Guid? ShopId { get; set; }
     public Guid? OrderId { get; set; }
-    public bool IncludeHandovers { get; set; }
+    public bool? IncludeHandovers { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
 }

@@ -628,4 +628,194 @@ public class ReturnsControllerTests
         detail.Lines[0].Quantity.Should().Be(2);
         detail.Lines[0].Reason.Should().Be("Damaged");
     }
+
+    [Fact]
+    public async Task CreateReturn_EmptyLines_Returns400()
+    {
+        var job = CreateDeliveredJob();
+        SetUser("owner-1", SelloraRoles.ShopOwner);
+        _jobRepoMock.Setup(r => r.GetByIdWithDetailsAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, job.ShopId, [], "Owner"));
+
+        var result = await _controller.CreateReturn(new CreateReturnRequest
+        {
+            DeliveryJobId = job.DeliveryJobId,
+            Lines = []
+        }, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task CreateReturn_ProductNotInJob_Returns400()
+    {
+        var job = CreateDeliveredJob();
+        SetUser("owner-1", SelloraRoles.ShopOwner);
+        _jobRepoMock.Setup(r => r.GetByIdWithDetailsAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, job.ShopId, [], "Owner"));
+
+        var result = await _controller.CreateReturn(new CreateReturnRequest
+        {
+            DeliveryJobId = job.DeliveryJobId,
+            Lines = [new CreateReturnRequestLine { ProductId = Guid.NewGuid(), Quantity = 1, Reason = "Damaged" }]
+        }, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task CreateReturn_ReasonTooLong_Returns400()
+    {
+        var job = CreateDeliveredJob();
+        var prodId = job.Lines.First().ProductId;
+        SetUser("owner-1", SelloraRoles.ShopOwner);
+        _jobRepoMock.Setup(r => r.GetByIdWithDetailsAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, job.ShopId, [], "Owner"));
+
+        var result = await _controller.CreateReturn(new CreateReturnRequest
+        {
+            DeliveryJobId = job.DeliveryJobId,
+            Lines = [new CreateReturnRequestLine { ProductId = prodId, Quantity = 1, Reason = new string('x', 501) }]
+        }, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task CreateReturn_LockedJobNull_Returns409()
+    {
+        var job = CreateDeliveredJob();
+        var prodId = job.Lines.First().ProductId;
+        SetUser("owner-1", SelloraRoles.ShopOwner);
+        _jobRepoMock.Setup(r => r.GetByIdWithDetailsAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, job.ShopId, [], "Owner"));
+        _returnRepoMock.Setup(r => r.LockDeliveryJobAsync(job.DeliveryJobId, job.CompanyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DeliveryJob?)null);
+
+        var result = await _controller.CreateReturn(new CreateReturnRequest
+        {
+            DeliveryJobId = job.DeliveryJobId,
+            Lines = [new CreateReturnRequestLine { ProductId = prodId, Quantity = 1, Reason = "Damaged" }]
+        }, CancellationToken.None);
+
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task DecideReturn_RejectReasonTooLong_Returns400()
+    {
+        var agencyId = Guid.NewGuid();
+        var returnRequest = ReturnRequest.Create(
+            Guid.NewGuid(), "RT-01", Guid.NewGuid(), Guid.NewGuid(), "ORD-01",
+            Guid.NewGuid(), agencyId, Guid.NewGuid(), Guid.NewGuid(),
+            "u1", "ShopOwner", DateTimeOffset.UtcNow, []);
+
+        SetUser("op-1", SelloraRoles.AgencyOperator);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(returnRequest);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, agencyId, null, [], "Op"));
+
+        var result = await _controller.DecideReturn(
+            returnRequest.ReturnRequestId,
+            new DecideReturnRequest { Decision = "Rejected", Reason = new string('a', 501) },
+            CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task DecideReturn_ApprovalLockedJobNull_Returns409()
+    {
+        var agencyId = Guid.NewGuid();
+        var returnRequest = ReturnRequest.Create(
+            Guid.NewGuid(), "RT-01", Guid.NewGuid(), Guid.NewGuid(), "ORD-01",
+            Guid.NewGuid(), agencyId, Guid.NewGuid(), Guid.NewGuid(),
+            "u1", "ShopOwner", DateTimeOffset.UtcNow, []);
+
+        SetUser("op-1", SelloraRoles.AgencyOperator);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(returnRequest);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, agencyId, null, [], "Op"));
+        _returnRepoMock.Setup(r => r.LockDeliveryJobAsync(returnRequest.DeliveryJobId, returnRequest.CompanyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DeliveryJob?)null);
+
+        var result = await _controller.DecideReturn(
+            returnRequest.ReturnRequestId,
+            new DecideReturnRequest { Decision = "Approved" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task DecideReturn_ApprovalQuantityExceedsRemaining_Returns409()
+    {
+        var agencyId = Guid.NewGuid();
+        var job = CreateDeliveredJob(agencyId: agencyId);
+        var prodId = job.Lines.First().ProductId;
+        var line = new ReturnRequestLine(Guid.NewGuid(), job.CompanyId, prodId, "Item", 10, "Damaged"); // 10 units requested, but job only has 5
+        var returnRequest = ReturnRequest.Create(
+            job.CompanyId, "RT-01", job.DeliveryJobId, job.OrderId, job.OrderReference,
+            job.ShopId, agencyId, job.TerritoryId, job.ProvinceId,
+            "u1", "ShopOwner", DateTimeOffset.UtcNow, [line]);
+
+        SetUser("op-1", SelloraRoles.AgencyOperator);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(returnRequest);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, agencyId, null, [], "Op"));
+        _returnRepoMock.Setup(r => r.LockDeliveryJobAsync(returnRequest.DeliveryJobId, returnRequest.CompanyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _returnRepoMock.Setup(r => r.GetReturnedQuantitiesByJobIdAsync(job.DeliveryJobId, returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+
+        var result = await _controller.DecideReturn(
+            returnRequest.ReturnRequestId,
+            new DecideReturnRequest { Decision = "Approved" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task DecideReturn_ApprovalConcurrencyException_Returns409()
+    {
+        var agencyId = Guid.NewGuid();
+        var job = CreateDeliveredJob(agencyId: agencyId);
+        var prodId = job.Lines.First().ProductId;
+        var line = new ReturnRequestLine(Guid.NewGuid(), job.CompanyId, prodId, "Item", 1, "Damaged");
+        var returnRequest = ReturnRequest.Create(
+            job.CompanyId, "RT-01", job.DeliveryJobId, job.OrderId, job.OrderReference,
+            job.ShopId, agencyId, job.TerritoryId, job.ProvinceId,
+            "u1", "ShopOwner", DateTimeOffset.UtcNow, [line]);
+
+        SetUser("op-1", SelloraRoles.AgencyOperator);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(returnRequest);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, agencyId, null, [], "Op"));
+        _returnRepoMock.Setup(r => r.LockDeliveryJobAsync(returnRequest.DeliveryJobId, returnRequest.CompanyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _returnRepoMock.Setup(r => r.GetReturnedQuantitiesByJobIdAsync(job.DeliveryJobId, returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+        _returnRepoMock.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DbUpdateConcurrencyException("Concurrency conflict"));
+
+        var result = await _controller.DecideReturn(
+            returnRequest.ReturnRequestId,
+            new DecideReturnRequest { Decision = "Approved" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
 }
