@@ -19,6 +19,17 @@ public static class DependencyRegistration
                 client.BaseAddress = BaseAddress(options.Organization, "Organization"))
             .AddResilience("organization", options.Organization, options.CircuitBreaker);
 
+        if (!string.IsNullOrWhiteSpace(options.Inventory.BaseUrl))
+        {
+            services.AddHttpClient<IInventoryClient, InventoryClient>(client =>
+                    client.BaseAddress = BaseAddress(options.Inventory, "Inventory"))
+                .AddResilience("inventory", options.Inventory, options.CircuitBreaker);
+        }
+        else
+        {
+            services.AddHttpClient<IInventoryClient, InventoryClient>();
+        }
+
         return builder;
     }
 

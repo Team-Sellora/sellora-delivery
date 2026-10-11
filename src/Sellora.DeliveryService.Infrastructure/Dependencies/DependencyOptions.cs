@@ -6,6 +6,8 @@ public sealed class DependencyOptions
 
     public EndpointOptions Organization { get; set; } = new();
 
+    public EndpointOptions Inventory { get; set; } = new();
+
     public CircuitBreakerSettings CircuitBreaker { get; set; } = new();
 }
 
