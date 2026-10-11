@@ -524,4 +524,108 @@ public class ReturnsControllerTests
         response.TotalCount.Should().Be(1);
         response.Items.Should().HaveCount(1);
     }
+
+    [Fact]
+    public async Task DecideReturn_ReturnNotFound_Returns404()
+    {
+        SetUser("op-1", SelloraRoles.AgencyOperator);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ReturnRequest?)null);
+
+        var result = await _controller.DecideReturn(
+            Guid.NewGuid(),
+            new DecideReturnRequest { Decision = "Approved" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task DecideReturn_InvalidDecision_Returns400()
+    {
+        var agencyId = Guid.NewGuid();
+        var returnRequest = ReturnRequest.Create(
+            Guid.NewGuid(), "RT-01", Guid.NewGuid(), Guid.NewGuid(), "ORD-01",
+            Guid.NewGuid(), agencyId, Guid.NewGuid(), Guid.NewGuid(),
+            "u1", "ShopOwner", DateTimeOffset.UtcNow, []);
+
+        SetUser("op-1", SelloraRoles.AgencyOperator);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(returnRequest);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, agencyId, null, [], "Op"));
+
+        var result = await _controller.DecideReturn(
+            returnRequest.ReturnRequestId,
+            new DecideReturnRequest { Decision = "Maybe" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetReturnById_NotFound_WhenMissing()
+    {
+        SetUser("admin-1", SelloraRoles.CompanyAdmin);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ReturnRequest?)null);
+
+        var result = await _controller.GetReturnById(Guid.NewGuid(), CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task GetReturnById_NotFound_WhenOutOfScope()
+    {
+        var agencyId = Guid.NewGuid();
+        var otherAgencyId = Guid.NewGuid();
+        var job = CreateDeliveredJob(agencyId: agencyId);
+        var returnRequest = ReturnRequest.Create(
+            job.CompanyId, "RT-01", job.DeliveryJobId, job.OrderId, job.OrderReference,
+            job.ShopId, agencyId, job.TerritoryId, job.ProvinceId,
+            "u1", "ShopOwner", DateTimeOffset.UtcNow, []);
+
+        SetUser("op-1", SelloraRoles.AgencyOperator);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(returnRequest);
+        _jobRepoMock.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, otherAgencyId, null, [], "Op"));
+
+        var result = await _controller.GetReturnById(returnRequest.ReturnRequestId, CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task GetReturnById_Ok_WhenInScope()
+    {
+        var agencyId = Guid.NewGuid();
+        var job = CreateDeliveredJob(agencyId: agencyId);
+        var line = new ReturnRequestLine(Guid.NewGuid(), job.CompanyId, Guid.NewGuid(), "Sample Product", 2, "Damaged");
+        var returnRequest = ReturnRequest.Create(
+            job.CompanyId, "RT-01", job.DeliveryJobId, job.OrderId, job.OrderReference,
+            job.ShopId, agencyId, job.TerritoryId, job.ProvinceId,
+            "u1", "ShopOwner", DateTimeOffset.UtcNow, [line]);
+
+        SetUser("admin-1", SelloraRoles.CompanyAdmin);
+        _returnRepoMock.Setup(r => r.GetByIdWithLinesAsync(returnRequest.ReturnRequestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(returnRequest);
+        _jobRepoMock.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _orgClientMock.Setup(o => o.GetCallerScopeAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallerScope(null, null, null, [], "Admin"));
+
+        var result = await _controller.GetReturnById(returnRequest.ReturnRequestId, CancellationToken.None);
+
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        var detail = ok.Value.Should().BeOfType<ReturnDetailResponse>().Subject;
+        detail.ReturnReference.Should().Be("RT-01");
+        detail.Lines.Should().HaveCount(1);
+        detail.Lines[0].ProductName.Should().Be("Sample Product");
+        detail.Lines[0].Quantity.Should().Be(2);
+        detail.Lines[0].Reason.Should().Be("Damaged");
+    }
 }
