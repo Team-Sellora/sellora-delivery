@@ -26,8 +26,10 @@ public static class DependencyInjection
                 npgsql => npgsql.MigrationsAssembly(typeof(DeliveryDbContext).Assembly.FullName)));
 
         services.AddScoped<IDeliveryJobRepository, DeliveryJobRepository>();
+        services.AddScoped<IReturnRequestRepository, ReturnRequestRepository>();
         services.AddScoped<IOutboxWriter, EntityFrameworkOutboxWriter>();
         services.AddScoped<IDeliveryReferenceGenerator, DeliveryReferenceGenerator>();
+        services.AddScoped<IReturnReferenceGenerator, ReturnReferenceGenerator>();
         services.AddScoped<IDeliveryJobService, DeliveryJobService>();
 
         services.AddHostedService<OrderEventConsumerService>();
