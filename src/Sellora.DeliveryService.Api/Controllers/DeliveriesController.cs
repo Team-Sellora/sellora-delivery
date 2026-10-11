@@ -20,15 +20,18 @@ public class DeliveriesController : ControllerBase
     private readonly IDeliveryJobRepository _repository;
     private readonly IOrganizationClient _organizationClient;
     private readonly IOutboxWriter _outboxWriter;
+    private readonly IReturnRequestRepository? _returnRepository;
 
     public DeliveriesController(
         IDeliveryJobRepository repository,
         IOrganizationClient organizationClient,
-        IOutboxWriter outboxWriter)
+        IOutboxWriter outboxWriter,
+        IReturnRequestRepository? returnRepository = null)
     {
         _repository = repository;
         _organizationClient = organizationClient;
         _outboxWriter = outboxWriter;
+        _returnRepository = returnRepository;
     }
 
     [HttpGet("{id:guid}/eligible-reps")]
@@ -354,6 +357,10 @@ public class DeliveriesController : ControllerBase
                 h.Reason))
             .ToList();
 
+        var returnedQuantities = _returnRepository != null
+            ? await _returnRepository.GetReturnedQuantitiesByJobIdAsync(id, null, ct)
+            : new Dictionary<Guid, int>();
+
         var lines = job.Lines.Select(l => new DeliveryLineDto(
             l.DeliveryJobLineId,
             l.ProductId,
@@ -361,7 +368,7 @@ public class DeliveriesController : ControllerBase
             l.Quantity,
             l.UnitPrice,
             l.LineTotal,
-            l.Quantity // Placeholder
+            Math.Max(0, l.Quantity - returnedQuantities.GetValueOrDefault(l.ProductId, 0))
         )).ToList();
 
         var confirmation = await _repository.GetConfirmationByJobIdAsync(id, ct);
