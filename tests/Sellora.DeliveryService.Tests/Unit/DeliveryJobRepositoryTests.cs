@@ -326,4 +326,52 @@ public class DeliveryJobRepositoryTests : IDisposable
         totalCount.Should().Be(3);
         pagedItems.Should().HaveCount(1);
     }
+
+    [Fact]
+    public async Task AddConfirmationAsync_And_GetConfirmationByJobIdAsync_Works()
+    {
+        var job = CreateJob(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        _db.DeliveryJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var confirmation = DeliveryConfirmation.Create(
+            job.DeliveryJobId,
+            job.CompanyId,
+            ConfirmationType.Confirmed,
+            "Received safely",
+            "https://signatures.sellora.com/sig1.png"
+        );
+
+        await _repository.AddConfirmationAsync(confirmation);
+        await _repository.SaveChangesAsync();
+
+        var fetched = await _repository.GetConfirmationByJobIdAsync(job.DeliveryJobId);
+        fetched.Should().NotBeNull();
+        fetched!.Type.Should().Be(ConfirmationType.Confirmed);
+        fetched.Notes.Should().Be("Received safely");
+        fetched.SignatureUrl.Should().Be("https://signatures.sellora.com/sig1.png");
+    }
+
+    [Fact]
+    public async Task GetConfirmationsByJobIdsAsync_ReturnsDictionary()
+    {
+        var job1 = CreateJob(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var job2 = CreateJob(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        _db.DeliveryJobs.AddRange(job1, job2);
+        await _db.SaveChangesAsync();
+
+        var conf1 = DeliveryConfirmation.Create(
+            job1.DeliveryJobId,
+            job1.CompanyId,
+            ConfirmationType.Confirmed,
+            null,
+            null
+        );
+        await _repository.AddConfirmationAsync(conf1);
+        await _repository.SaveChangesAsync();
+
+        var dict = await _repository.GetConfirmationsByJobIdsAsync([job1.DeliveryJobId, job2.DeliveryJobId]);
+        dict.Should().ContainKey(job1.DeliveryJobId);
+        dict.Should().NotContainKey(job2.DeliveryJobId);
+    }
 }

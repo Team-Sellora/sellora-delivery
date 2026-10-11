@@ -368,7 +368,7 @@ public class DeliveriesControllerTests
             .ReturnsAsync((new List<DeliveryJob> { CreateTestJob() }, 1));
             
         // Act
-        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { Page = 1, PageSize = 10 }, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();
@@ -438,7 +438,7 @@ public class DeliveriesControllerTests
         var otherShopId = Guid.NewGuid();
 
         // Act
-        var result = await _controller.GetDeliveries(null, null, null, null, otherShopId, null, false, 1, 10, CancellationToken.None);
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { ShopId = otherShopId, Page = 1, PageSize = 10 }, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<ForbidResult>();
@@ -460,7 +460,7 @@ public class DeliveriesControllerTests
         var otherSalesRepId = Guid.NewGuid();
 
         // Act
-        var result = await _controller.GetDeliveries(null, null, null, otherSalesRepId, null, null, false, 1, 10, CancellationToken.None);
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { SalesRepId = otherSalesRepId, Page = 1, PageSize = 10 }, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<ForbidResult>();
@@ -483,7 +483,7 @@ public class DeliveriesControllerTests
             .ReturnsAsync((new List<DeliveryJob> { CreateTestJob() }, 1));
 
         // Act
-        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { Page = 1, PageSize = 10 }, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();
@@ -535,7 +535,7 @@ public class DeliveriesControllerTests
             .ReturnsAsync((new List<DeliveryJob>(), 0));
 
         // Act
-        var result = await _controller.GetDeliveries(null, null, null, null, null, null, false, 1, 10, CancellationToken.None);
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { Page = 1, PageSize = 10 }, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();

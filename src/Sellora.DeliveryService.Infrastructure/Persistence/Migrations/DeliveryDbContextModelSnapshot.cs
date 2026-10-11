@@ -22,6 +22,42 @@ namespace Sellora.DeliveryService.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.DeliveryConfirmation", b =>
+                {
+                    b.Property<Guid>("DeliveryConfirmationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DeliveryJobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("SignatureUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("DeliveryConfirmationId");
+
+                    b.HasIndex("DeliveryJobId")
+                        .IsUnique();
+
+                    b.ToTable("DeliveryConfirmations", (string)null);
+                });
+
             modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.DeliveryJob", b =>
                 {
                     b.Property<Guid>("DeliveryJobId")
@@ -208,7 +244,6 @@ namespace Sellora.DeliveryService.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.DeliveryStatusHistory", b =>
                 {
                     b.Property<Guid>("DeliveryStatusHistoryId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("delivery_status_history_id");
 

@@ -132,4 +132,23 @@ internal class DeliveryJobRepository(DeliveryDbContext db) : IDeliveryJobReposit
 
         return q;
     }
+
+    public async Task AddConfirmationAsync(DeliveryConfirmation confirmation, CancellationToken ct = default)
+    {
+        await db.DeliveryConfirmations.AddAsync(confirmation, ct);
+    }
+
+    public async Task<DeliveryConfirmation?> GetConfirmationByJobIdAsync(Guid deliveryJobId, CancellationToken ct = default)
+    {
+        return await db.DeliveryConfirmations.FirstOrDefaultAsync(c => c.DeliveryJobId == deliveryJobId, ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, DeliveryConfirmation>> GetConfirmationsByJobIdsAsync(IEnumerable<Guid> jobIds, CancellationToken ct = default)
+    {
+        var list = await db.DeliveryConfirmations
+            .Where(c => jobIds.Contains(c.DeliveryJobId))
+            .ToListAsync(ct);
+
+        return list.ToDictionary(c => c.DeliveryJobId);
+    }
 }
