@@ -59,6 +59,7 @@ jobs:
         uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
         with:
           app-name: ${{ vars.AZURE_STAGING_APP_NAME }}
+          slot-name: staging
           publish-profile: ${{ secrets.AZURE_STAGING_PUBLISH_PROFILE }}
           images: index.docker.io/${{ vars.DOCKERHUB_USERNAME }}/sellora-delivery:dev-${{ github.sha }}
 
