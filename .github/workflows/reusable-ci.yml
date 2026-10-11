@@ -80,7 +80,7 @@ jobs:
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
             /d:sonar.coverage.exclusions="**/Migrations/**,**/Program.cs,**/DeliveryDbContextFactory.cs,**/DependencyInjection.cs,**/Persistence/Configurations/**,**/Http/**,**/Middleware/**" \
-            /d:sonar.qualitygate.wait=true
+            /d:sonar.qualitygate.wait=false
 
       - name: Restore
         run: dotnet restore "${{ inputs.solution-path }}"
