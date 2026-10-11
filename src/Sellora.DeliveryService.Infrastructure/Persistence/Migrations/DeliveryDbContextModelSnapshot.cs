@@ -374,6 +374,165 @@ namespace Sellora.DeliveryService.Infrastructure.Persistence.Migrations
                     b.ToTable("processed_delivery_events", (string)null);
                 });
 
+            modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.ReturnRequest", b =>
+                {
+                    b.Property<Guid>("ReturnRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("return_request_id");
+
+                    b.Property<Guid>("AgencyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agency_id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecidedByRole")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("decided_by_role");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("decided_by_user_id");
+
+                    b.Property<string>("DecisionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("decision_reason");
+
+                    b.Property<Guid>("DeliveryJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delivery_job_id");
+
+                    b.Property<Guid?>("InventoryOwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventory_owner_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("OrderReference")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("order_reference");
+
+                    b.Property<Guid>("ProvinceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("province_id");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("RequestedByRole")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("requested_by_role");
+
+                    b.Property<string>("RequestedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("requested_by_user_id");
+
+                    b.Property<string>("ReturnReference")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("return_reference");
+
+                    b.Property<Guid>("ShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shop_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TerritoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("territory_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("ReturnRequestId");
+
+                    b.HasIndex("ReturnReference")
+                        .IsUnique()
+                        .HasDatabaseName("ix_return_requests_reference");
+
+                    b.HasIndex("CompanyId", "DeliveryJobId")
+                        .HasDatabaseName("ix_return_requests_company_delivery_job");
+
+                    b.HasIndex("CompanyId", "AgencyId", "Status")
+                        .HasDatabaseName("ix_return_requests_agency_status");
+
+                    b.ToTable("return_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.ReturnRequestLine", b =>
+                {
+                    b.Property<Guid>("ReturnRequestLineId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("return_request_line_id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("product_name");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("ReturnRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("return_request_id");
+
+                    b.HasKey("ReturnRequestLineId");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("ix_return_request_lines_product_id");
+
+                    b.HasIndex("ReturnRequestId")
+                        .HasDatabaseName("ix_return_request_lines_return_id");
+
+                    b.ToTable("return_request_lines", (string)null);
+                });
+
             modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.DeliveryJobLine", b =>
                 {
                     b.HasOne("Sellora.DeliveryService.Domain.Entities.DeliveryJob", null)
@@ -392,11 +551,25 @@ namespace Sellora.DeliveryService.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.ReturnRequestLine", b =>
+                {
+                    b.HasOne("Sellora.DeliveryService.Domain.Entities.ReturnRequest", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("ReturnRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.DeliveryJob", b =>
                 {
                     b.Navigation("Lines");
 
                     b.Navigation("StatusHistory");
+                });
+
+            modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.ReturnRequest", b =>
+                {
+                    b.Navigation("Lines");
                 });
 #pragma warning restore 612, 618
         }
