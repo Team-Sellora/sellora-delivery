@@ -1,25 +1,20 @@
 name: CD - Deploy Production
 
-# Manual only. Do not add a push trigger until a separate production app exists.
 on:
-  workflow_dispatch:
-    inputs:
-      confirm:
-        description: Type DEPLOY to confirm a production deployment
-        required: true
-        type: string
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: delivery-production
+  group: cd-production-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   deploy-production:
     name: Deploy to Azure production
-    if: github.ref == 'refs/heads/main' && inputs.confirm == 'DEPLOY'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: production
@@ -64,14 +59,14 @@ jobs:
           file: ./Dockerfile
           build-args: BUILD_COMMIT_SHA=${{ github.sha }}
           push: true
-          tags: naveentharuka/sellora-delivery:prod-${{ github.sha }}
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/sellora-delivery:prod-${{ github.sha }}
 
       - name: Deploy production image
         uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
         with:
           app-name: ${{ vars.AZURE_PRODUCTION_APP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PRODUCTION_PUBLISH_PROFILE }}
-          images: index.docker.io/naveentharuka/sellora-delivery:prod-${{ github.sha }}
+          images: index.docker.io/${{ vars.DOCKERHUB_USERNAME }}/sellora-delivery:prod-${{ github.sha }}
 
       - name: Validate production startup
         shell: bash
