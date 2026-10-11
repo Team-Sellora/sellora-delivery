@@ -197,6 +197,145 @@ All events on this topic carry the following headers:
 
 ---
 
+### `ReturnRequested`
+
+**Published when:** A return request is raised against a delivered order by an authorized requester (shop owner, assigned rep, or order rep). (Audit-only; does not change stock).
+
+**Message key:** `OrderReference`
+
+#### Payload schema
+
+```json
+{
+  "eventId": "uuid",
+  "eventType": "ReturnRequested",
+  "schemaVersion": "1.0",
+  "companyId": "uuid",
+  "entityId": "uuid",
+  "returnRequestId": "uuid",
+  "returnReference": "RT-yyMMdd-XXXXXX",
+  "deliveryId": "uuid",
+  "orderId": "uuid",
+  "orderReference": "string",
+  "shop": {
+    "shopId": "uuid",
+    "name": "string",
+    "ownerName": "string",
+    "ownerEmail": "string"
+  },
+  "agency": {
+    "agencyId": "uuid",
+    "name": "string",
+    "email": "string"
+  },
+  "territoryId": "uuid",
+  "provinceId": "uuid",
+  "requestedAt": "ISO 8601 timestamp",
+  "requestedByUserId": "string",
+  "requestedByRole": "ShopOwner | SalesRep",
+  "lines": [
+    {
+      "productId": "uuid",
+      "productName": "string",
+      "quantity": 5,
+      "reason": "string"
+    }
+  ],
+  "correlationId": "string | null"
+}
+```
+
+---
+
+### `ReturnAccepted`
+
+**Published when:** An Agency Operator approves a pending return request. Consumed by `sellora-inventory` to increment stock for the returned items.
+
+**Message key:** `OrderReference`
+
+#### Payload schema
+
+```json
+{
+  "eventId": "uuid",
+  "eventType": "ReturnAccepted",
+  "schemaVersion": "1.0",
+  "companyId": "uuid",
+  "entityId": "uuid",
+  "inventoryOwnerId": "uuid",
+  "returnReference": "RT-yyMMdd-XXXXXX",
+  "lines": [
+    {
+      "productId": "uuid",
+      "batchId": null,
+      "quantity": 5,
+      "productName": "string"
+    }
+  ],
+  "acceptedAt": "ISO 8601 timestamp",
+  "correlationId": "string",
+  "deliveryId": "uuid",
+  "orderReference": "string",
+  "shop": {
+    "shopId": "uuid",
+    "name": "string",
+    "ownerName": "string",
+    "ownerEmail": "string"
+  },
+  "agency": {
+    "agencyId": "uuid",
+    "name": "string",
+    "email": "string"
+  }
+}
+```
+
+> **Note on `batchId`:** `batchId` is set to `null` because Delivery does not track the specific batch the goods originated from. Inventory accepts null batches for accepted returns.
+> **Note on extra fields:** Fields such as `shop`, `agency`, `deliveryId`, `orderReference`, and `line.productName` are additive audit fields. Inventory ignores unmapped fields during deserialization.
+
+---
+
+### `ReturnRejected`
+
+**Published when:** An Agency Operator rejects a pending return request with a mandatory reason. (Audit-only; does not change stock).
+
+**Message key:** `OrderReference`
+
+#### Payload schema
+
+```json
+{
+  "eventId": "uuid",
+  "eventType": "ReturnRejected",
+  "schemaVersion": "1.0",
+  "companyId": "uuid",
+  "entityId": "uuid",
+  "returnRequestId": "uuid",
+  "returnReference": "RT-yyMMdd-XXXXXX",
+  "deliveryId": "uuid",
+  "orderId": "uuid",
+  "orderReference": "string",
+  "shop": {
+    "shopId": "uuid",
+    "name": "string",
+    "ownerName": "string",
+    "ownerEmail": "string"
+  },
+  "agency": {
+    "agencyId": "uuid",
+    "name": "string",
+    "email": "string"
+  },
+  "rejectedAt": "ISO 8601 timestamp",
+  "rejectedByUserId": "string",
+  "rejectedByRole": "AgencyOperator",
+  "reason": "string",
+  "correlationId": "string | null"
+}
+```
+
+---
+
 ## Dead Letter Topic
 
 **Topic:** `sellora.delivery.dead-letter.v1`
