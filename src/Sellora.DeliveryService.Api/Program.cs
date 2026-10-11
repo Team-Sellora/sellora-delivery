@@ -86,23 +86,24 @@ try
 
     builder.Services.AddInfrastructure(builder.Configuration);
 
-    var deliveryBuilder = builder.Services.AddDeliveryDependencies(builder.Configuration)
+    builder.Services.AddDeliveryDependencies(builder.Configuration)
         .AddHttpMessageHandler<ForwardBearerTokenHandler>()
         .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
-#if DEBUG
-    deliveryBuilder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-    {
-        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-    });
-#endif
 
-    var inventoryBuilder = builder.Services.AddHttpClient<IInventoryClient, InventoryClient>()
+    builder.Services.AddHttpClient<IInventoryClient, InventoryClient>()
         .AddHttpMessageHandler<ForwardBearerTokenHandler>()
         .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
+
 #if DEBUG
-    inventoryBuilder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    builder.Services.ConfigureAll<Microsoft.Extensions.Http.HttpClientFactoryOptions>(options =>
     {
-        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        options.HttpMessageHandlerBuilderActions.Add(b =>
+        {
+            if (b.PrimaryHandler is HttpClientHandler handler)
+            {
+                handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+            }
+        });
     });
 #endif
 

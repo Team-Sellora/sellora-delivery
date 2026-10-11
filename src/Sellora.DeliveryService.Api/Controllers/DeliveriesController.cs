@@ -312,9 +312,14 @@ public class DeliveriesController : ControllerBase
         string? confirmationState = null;
         if (j.FulfilmentType != "ImmediateCashSale")
         {
-            confirmationState = confirmations.TryGetValue(j.DeliveryJobId, out var conf)
-                ? conf.Type.ToString()
-                : (j.Status == DeliveryStatus.Delivered ? "Awaiting" : null);
+            if (confirmations.TryGetValue(j.DeliveryJobId, out var conf))
+            {
+                confirmationState = conf.Type.ToString();
+            }
+            else if (j.Status == DeliveryStatus.Delivered)
+            {
+                confirmationState = "Awaiting";
+            }
         }
 
         return new DeliveryListItemDto(
