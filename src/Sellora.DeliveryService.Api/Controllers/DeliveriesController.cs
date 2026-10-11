@@ -224,101 +224,107 @@ public class DeliveriesController : ControllerBase
     }
     [HttpGet]
     [Authorize]
-    public async Task<IActionResult> GetDeliveries(
-        [FromQuery] string[]? status,
-        [FromQuery] DateOnly? scheduledDateFrom,
-        [FromQuery] DateOnly? scheduledDateTo,
-        [FromQuery] Guid? salesRepId,
-        [FromQuery] Guid? shopId,
-        [FromQuery] Guid? orderId,
-        [FromQuery] bool includeHandovers = false,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
-        CancellationToken ct = default)
+    public async Task<IActionResult> GetDeliveries([FromQuery] DeliveryListFilter filter, CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        var page = Math.Max(1, filter.Page);
+        var pageSize = Math.Clamp(filter.PageSize, 1, 100);
 
         var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
-        
-
         var roles = GetUserRoles();
-        var isCompanyAdmin = roles.Contains(SelloraRoles.SystemAdmin) || roles.Contains(SelloraRoles.CompanyAdmin);
-        var isAreaManager = roles.Contains(SelloraRoles.AreaManager);
-        var isAgencyOperator = roles.Contains(SelloraRoles.AgencyOperator);
-        var isSalesRep = roles.Contains(SelloraRoles.SalesRep);
-        var isShopOwner = roles.Contains(SelloraRoles.ShopOwner);
 
-        if (!isCompanyAdmin)
+        if (!IsListFilterAllowed(filter, callerScope, roles))
         {
-            if (isShopOwner && shopId.HasValue && shopId.Value != callerScope?.ShopId)
-            {
-                return Forbid();
-            }
-
-            if (isSalesRep && salesRepId.HasValue && salesRepId.Value != callerScope?.SalesRepId)
-            {
-                return Forbid();
-            }
+            return Forbid();
         }
 
-        var query = new DeliveryJobQuery
-        {
-            Statuses = status,
-            ScheduledDateFrom = scheduledDateFrom,
-            ScheduledDateTo = scheduledDateTo,
-            SalesRepId = salesRepId,
-            ShopId = shopId,
-            OrderId = orderId,
-            IncludeHandovers = includeHandovers,
-            Page = page,
-            PageSize = pageSize,
-            IsCompanyAdmin = isCompanyAdmin,
-            ScopeAgencyId = isAgencyOperator ? callerScope?.AgencyId : null,
-            ScopeSalesRepId = isSalesRep ? callerScope?.SalesRepId : null,
-            ScopeShopId = isShopOwner ? callerScope?.ShopId : null,
-            ScopeProvinceIds = isAreaManager ? callerScope?.ProvinceIds : null
-        };
-
+        var query = BuildJobQuery(filter, page, pageSize, callerScope, roles);
         var (items, totalCount) = await _repository.ListAsync(query, ct);
 
-        IReadOnlyDictionary<Guid, DeliveryConfirmation> confirmations = new Dictionary<Guid, DeliveryConfirmation>();
-        if (items.Count > 0)
-        {
-            var jobIds = items.Select(j => j.DeliveryJobId).ToList();
-            confirmations = await _repository.GetConfirmationsByJobIdsAsync(jobIds, ct)
-                ?? new Dictionary<Guid, DeliveryConfirmation>();
-        }
-
-        var dtos = items.Select(j =>
-        {
-            string? confirmationState = null;
-            if (j.FulfilmentType != "ImmediateCashSale")
-            {
-                if (confirmations.TryGetValue(j.DeliveryJobId, out var conf))
-                {
-                    confirmationState = conf.Type.ToString();
-                }
-                else if (j.Status == DeliveryStatus.Delivered)
-                {
-                    confirmationState = "Awaiting";
-                }
-            }
-
-            return new DeliveryListItemDto(
-                j.DeliveryJobId,
-                j.DeliveryReference,
-                j.OrderReference,
-                j.ShopName,
-                j.TerritoryId,
-                j.Status.ToString(),
-                j.ScheduledDate,
-                j.AssignedRepName,
-                j.AgencyName,
-                confirmationState);
-        }).ToList();
+        var confirmations = await LoadConfirmationsAsync(items, ct);
+        var dtos = items.Select(j => MapListItem(j, confirmations)).ToList();
 
         return Ok(new DeliveryListResponse(dtos, page, pageSize, totalCount));
+    }
+
+    private static bool IsCompanyAdmin(List<string> roles) =>
+        roles.Contains(SelloraRoles.SystemAdmin) || roles.Contains(SelloraRoles.CompanyAdmin);
+
+    private static bool IsListFilterAllowed(DeliveryListFilter filter, CallerScope? callerScope, List<string> roles)
+    {
+        if (IsCompanyAdmin(roles))
+        {
+            return true;
+        }
+
+        if (roles.Contains(SelloraRoles.ShopOwner) && filter.ShopId.HasValue && filter.ShopId.Value != callerScope?.ShopId)
+        {
+            return false;
+        }
+
+        return !(roles.Contains(SelloraRoles.SalesRep) && filter.SalesRepId.HasValue && filter.SalesRepId.Value != callerScope?.SalesRepId);
+    }
+
+    private static DeliveryJobQuery BuildJobQuery(
+        DeliveryListFilter filter,
+        int page,
+        int pageSize,
+        CallerScope? callerScope,
+        List<string> roles)
+    {
+        return new DeliveryJobQuery
+        {
+            Statuses = filter.Status,
+            ScheduledDateFrom = filter.ScheduledDateFrom,
+            ScheduledDateTo = filter.ScheduledDateTo,
+            SalesRepId = filter.SalesRepId,
+            ShopId = filter.ShopId,
+            OrderId = filter.OrderId,
+            IncludeHandovers = filter.IncludeHandovers,
+            Page = page,
+            PageSize = pageSize,
+            IsCompanyAdmin = IsCompanyAdmin(roles),
+            ScopeAgencyId = roles.Contains(SelloraRoles.AgencyOperator) ? callerScope?.AgencyId : null,
+            ScopeSalesRepId = roles.Contains(SelloraRoles.SalesRep) ? callerScope?.SalesRepId : null,
+            ScopeShopId = roles.Contains(SelloraRoles.ShopOwner) ? callerScope?.ShopId : null,
+            ScopeProvinceIds = roles.Contains(SelloraRoles.AreaManager) ? callerScope?.ProvinceIds : null
+        };
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, DeliveryConfirmation>> LoadConfirmationsAsync(
+        IReadOnlyList<DeliveryJob> items,
+        CancellationToken ct)
+    {
+        if (items.Count == 0)
+        {
+            return new Dictionary<Guid, DeliveryConfirmation>();
+        }
+
+        var jobIds = items.Select(j => j.DeliveryJobId).ToList();
+        return await _repository.GetConfirmationsByJobIdsAsync(jobIds, ct)
+            ?? new Dictionary<Guid, DeliveryConfirmation>();
+    }
+
+    private static DeliveryListItemDto MapListItem(DeliveryJob j, IReadOnlyDictionary<Guid, DeliveryConfirmation> confirmations)
+    {
+        string? confirmationState = null;
+        if (j.FulfilmentType != "ImmediateCashSale")
+        {
+            confirmationState = confirmations.TryGetValue(j.DeliveryJobId, out var conf)
+                ? conf.Type.ToString()
+                : (j.Status == DeliveryStatus.Delivered ? "Awaiting" : null);
+        }
+
+        return new DeliveryListItemDto(
+            j.DeliveryJobId,
+            j.DeliveryReference,
+            j.OrderReference,
+            j.ShopName,
+            j.TerritoryId,
+            j.Status.ToString(),
+            j.ScheduledDate,
+            j.AssignedRepName,
+            j.AgencyName,
+            confirmationState);
     }
 
     [HttpGet("{id:guid}")]
@@ -663,6 +669,20 @@ public class UpdateDeliveryStatusRequest
 
     [System.Text.Json.Serialization.JsonRequired]
     public uint Version { get; set; }
+}
+
+[ExcludeFromCodeCoverage]
+public class DeliveryListFilter
+{
+    public string[]? Status { get; set; }
+    public DateOnly? ScheduledDateFrom { get; set; }
+    public DateOnly? ScheduledDateTo { get; set; }
+    public Guid? SalesRepId { get; set; }
+    public Guid? ShopId { get; set; }
+    public Guid? OrderId { get; set; }
+    public bool IncludeHandovers { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
 }
 
 [ExcludeFromCodeCoverage]

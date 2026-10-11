@@ -60,7 +60,7 @@ public class DeliveriesControllerQueryTests
             .ReturnsAsync(new CallerScope(null, null, ownShopId, new List<Guid>(), "Test"));
 
         // Act
-        var result = await _controller.GetDeliveries(null, null, null, null, otherShopId, null);
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { ShopId = otherShopId });
 
         // Assert
         result.Should().BeOfType<ForbidResult>();
@@ -78,7 +78,7 @@ public class DeliveriesControllerQueryTests
             .ReturnsAsync(new CallerScope(ownRepId, null, null, new List<Guid>(), "Test"));
 
         // Act
-        var result = await _controller.GetDeliveries(null, null, null, otherRepId, null, null);
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { SalesRepId = otherRepId });
 
         // Assert
         result.Should().BeOfType<ForbidResult>();
@@ -99,8 +99,7 @@ public class DeliveriesControllerQueryTests
 
         // Act
         var result = await _controller.GetDeliveries(
-            new[] { "Pending" },
-            null, null, null, null, null, false, 2, 10);
+            new DeliveryListFilter { Status = new[] { "Pending" }, Page = 2, PageSize = 10 });
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();

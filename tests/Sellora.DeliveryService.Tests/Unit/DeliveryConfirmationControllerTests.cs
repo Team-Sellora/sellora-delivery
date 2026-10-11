@@ -358,6 +358,49 @@ public class DeliveryConfirmationControllerTests
     }
 
     [Fact]
+    public async Task GetDeliveries_MapsConfirmationStatePerItem()
+    {
+        SetupUserRole("SystemAdmin");
+        var confirmedJob = CreateJob();
+        var awaitingJob = CreateJob();
+        var cashSaleJob = CreateJob(fulfilmentType: "ImmediateCashSale");
+        var assignedJob = CreateJob(status: DeliveryStatus.Assigned);
+
+        var jobs = new List<DeliveryJob> { confirmedJob, awaitingJob, cashSaleJob, assignedJob };
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((jobs, jobs.Count));
+
+        var confirmation = DeliveryConfirmation.Create(confirmedJob.DeliveryJobId, confirmedJob.CompanyId, ConfirmationType.Confirmed, null, null);
+        _mockRepository.Setup(r => r.GetConfirmationsByJobIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DeliveryConfirmation> { [confirmedJob.DeliveryJobId] = confirmation });
+
+        var result = await _controller.GetDeliveries(new DeliveryListFilter { Page = 1, PageSize = 10 }, CancellationToken.None);
+
+        var response = ((OkObjectResult)result).Value as DeliveryListResponse;
+        response.Should().NotBeNull();
+        response!.Items.Single(i => i.Id == confirmedJob.DeliveryJobId).ConfirmationState.Should().Be("Confirmed");
+        response.Items.Single(i => i.Id == awaitingJob.DeliveryJobId).ConfirmationState.Should().Be("Awaiting");
+        response.Items.Single(i => i.Id == cashSaleJob.DeliveryJobId).ConfirmationState.Should().BeNull();
+        response.Items.Single(i => i.Id == assignedJob.DeliveryJobId).ConfirmationState.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetDeliveries_WhenRepositoryReturnsNullConfirmations_FallsBackToEmpty()
+    {
+        SetupUserRole("SystemAdmin");
+        var job = CreateJob();
+        _mockRepository.Setup(r => r.ListAsync(It.IsAny<DeliveryJobQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<DeliveryJob> { job }, 1));
+        _mockRepository.Setup(r => r.GetConfirmationsByJobIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<Guid, DeliveryConfirmation>)null!);
+
+        var result = await _controller.GetDeliveries(new DeliveryListFilter(), CancellationToken.None);
+
+        var response = ((OkObjectResult)result).Value as DeliveryListResponse;
+        response!.Items.Single().ConfirmationState.Should().Be("Awaiting");
+    }
+
+    [Fact]
     public async Task GetDeliveryById_AccessControl_AdminBypassesScope()
     {
         SetupUserRole("SystemAdmin");
