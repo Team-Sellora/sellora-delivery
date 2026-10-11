@@ -11,6 +11,7 @@ using Sellora.DeliveryService.Infrastructure;
 using Sellora.DeliveryService.Infrastructure.Persistence;
 using Sellora.DeliveryService.Infrastructure.Tenancy;
 using Sellora.DeliveryService.Infrastructure.Dependencies;
+using Sellora.DeliveryService.Application.Dependencies;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -45,6 +46,21 @@ try
             options.Authority = builder.Configuration["Jwt:Authority"];
             options.Audience = builder.Configuration["Jwt:Audience"];
             options.RequireHttpsMetadata = builder.Configuration.GetValue("Jwt:RequireHttpsMetadata", true);
+#if DEBUG
+            options.RequireHttpsMetadata = false;
+            options.BackchannelHttpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+#endif
+            options.Events = new JwtBearerEvents
+            {
+                OnAuthenticationFailed = context =>
+                {
+                    Log.Error(context.Exception, "JWT authentication failed: {Message}", context.Exception.Message);
+                    return Task.CompletedTask;
+                }
+            };
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
@@ -73,6 +89,23 @@ try
     builder.Services.AddDeliveryDependencies(builder.Configuration)
         .AddHttpMessageHandler<ForwardBearerTokenHandler>()
         .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
+
+    builder.Services.AddHttpClient<IInventoryClient, InventoryClient>()
+        .AddHttpMessageHandler<ForwardBearerTokenHandler>()
+        .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
+
+#if DEBUG
+    builder.Services.ConfigureAll<Microsoft.Extensions.Http.HttpClientFactoryOptions>(options =>
+    {
+        options.HttpMessageHandlerBuilderActions.Add(b =>
+        {
+            if (b.PrimaryHandler is HttpClientHandler handler)
+            {
+                handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+            }
+        });
+    });
+#endif
 
     var app = builder.Build();
 

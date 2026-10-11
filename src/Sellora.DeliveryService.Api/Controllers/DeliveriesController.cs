@@ -20,15 +20,18 @@ public class DeliveriesController : ControllerBase
     private readonly IDeliveryJobRepository _repository;
     private readonly IOrganizationClient _organizationClient;
     private readonly IOutboxWriter _outboxWriter;
+    private readonly IReturnRequestRepository? _returnRepository;
 
     public DeliveriesController(
         IDeliveryJobRepository repository,
         IOrganizationClient organizationClient,
-        IOutboxWriter outboxWriter)
+        IOutboxWriter outboxWriter,
+        IReturnRequestRepository? returnRepository = null)
     {
         _repository = repository;
         _organizationClient = organizationClient;
         _outboxWriter = outboxWriter;
+        _returnRepository = returnRepository;
     }
 
     [HttpGet("{id:guid}/eligible-reps")]
@@ -279,7 +282,7 @@ public class DeliveriesController : ControllerBase
             SalesRepId = filter.SalesRepId,
             ShopId = filter.ShopId,
             OrderId = filter.OrderId,
-            IncludeHandovers = filter.IncludeHandovers,
+            IncludeHandovers = filter.IncludeHandovers ?? false,
             Page = page,
             PageSize = pageSize,
             IsCompanyAdmin = IsCompanyAdmin(roles),
@@ -309,9 +312,14 @@ public class DeliveriesController : ControllerBase
         string? confirmationState = null;
         if (j.FulfilmentType != "ImmediateCashSale")
         {
-            confirmationState = confirmations.TryGetValue(j.DeliveryJobId, out var conf)
-                ? conf.Type.ToString()
-                : (j.Status == DeliveryStatus.Delivered ? "Awaiting" : null);
+            if (confirmations.TryGetValue(j.DeliveryJobId, out var conf))
+            {
+                confirmationState = conf.Type.ToString();
+            }
+            else if (j.Status == DeliveryStatus.Delivered)
+            {
+                confirmationState = "Awaiting";
+            }
         }
 
         return new DeliveryListItemDto(
@@ -354,6 +362,10 @@ public class DeliveriesController : ControllerBase
                 h.Reason))
             .ToList();
 
+        var returnedQuantities = _returnRepository != null
+            ? await _returnRepository.GetReturnedQuantitiesByJobIdAsync(id, null, ct)
+            : new Dictionary<Guid, int>();
+
         var lines = job.Lines.Select(l => new DeliveryLineDto(
             l.DeliveryJobLineId,
             l.ProductId,
@@ -361,7 +373,7 @@ public class DeliveriesController : ControllerBase
             l.Quantity,
             l.UnitPrice,
             l.LineTotal,
-            l.Quantity // Placeholder
+            Math.Max(0, l.Quantity - returnedQuantities.GetValueOrDefault(l.ProductId, 0))
         )).ToList();
 
         var confirmation = await _repository.GetConfirmationByJobIdAsync(id, ct);
@@ -680,7 +692,7 @@ public class DeliveryListFilter
     public Guid? SalesRepId { get; set; }
     public Guid? ShopId { get; set; }
     public Guid? OrderId { get; set; }
-    public bool IncludeHandovers { get; set; }
+    public bool? IncludeHandovers { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
 }

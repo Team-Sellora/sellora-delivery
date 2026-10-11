@@ -19,6 +19,17 @@ public static class DependencyRegistration
                 client.BaseAddress = BaseAddress(options.Organization, "Organization"))
             .AddResilience("organization", options.Organization, options.CircuitBreaker);
 
+        if (!string.IsNullOrWhiteSpace(options.Inventory.BaseUrl))
+        {
+            services.AddHttpClient<IInventoryClient, InventoryClient>(client =>
+                    client.BaseAddress = BaseAddress(options.Inventory, "Inventory"))
+                .AddResilience("inventory", options.Inventory, options.CircuitBreaker);
+        }
+        else
+        {
+            services.AddHttpClient<IInventoryClient, InventoryClient>();
+        }
+
         return builder;
     }
 
@@ -53,6 +64,12 @@ public static class DependencyRegistration
                 $"Dependencies:{name}:BaseUrl must be an absolute URL (got '{endpoint.BaseUrl}').");
         }
 
-        return uri.AbsoluteUri.EndsWith('/') ? uri : new Uri(uri.AbsoluteUri + "/");
+        var builder = new UriBuilder(uri);
+        if (!builder.Path.EndsWith('/'))
+        {
+            builder.Path = string.Concat(builder.Path, '/');
+        }
+
+        return builder.Uri;
     }
 }
