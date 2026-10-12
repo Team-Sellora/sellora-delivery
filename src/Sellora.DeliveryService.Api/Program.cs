@@ -21,6 +21,39 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
+    var initialAuthority = builder.Configuration["Jwt:Authority"];
+    if (string.IsNullOrWhiteSpace(initialAuthority) || initialAuthority.Contains(".internal", StringComparison.OrdinalIgnoreCase))
+    {
+        var stagingJson = Path.Combine(builder.Environment.ContentRootPath, "appsettings.Staging.json");
+        if (File.Exists(stagingJson))
+        {
+            builder.Configuration.AddJsonFile("appsettings.Staging.json", optional: true, reloadOnChange: false);
+        }
+    }
+
+    var jwtAuthority = builder.Configuration["Jwt:Authority"];
+    var jwtAudience = builder.Configuration["Jwt:Audience"];
+
+    Log.Information(
+        "Startup configuration: environment={Environment}, jwtAuthority={JwtAuthority}, jwtAudience={JwtAudience}",
+        builder.Environment.EnvironmentName,
+        jwtAuthority,
+        jwtAudience);
+
+    if (string.IsNullOrWhiteSpace(jwtAuthority) || jwtAuthority.Contains(".internal", StringComparison.OrdinalIgnoreCase))
+    {
+        Log.Warning(
+            "Jwt:Authority is unset or still the placeholder value. Every token will be rejected. " +
+            "Set Jwt__Authority and Jwt__Audience, and ASPNETCORE_ENVIRONMENT=Staging on non-production hosts.");
+    }
+
+    var isDevelopmentOrStaging = builder.Environment.IsDevelopment() || builder.Environment.IsStaging();
+    var isIpOrUntrustedHost = !string.IsNullOrWhiteSpace(jwtAuthority) &&
+        (jwtAuthority.Contains("13.61.228.129") || (Uri.TryCreate(jwtAuthority, UriKind.Absolute, out var parsedAuth) && parsedAuth.HostNameType == UriHostNameType.IPv4));
+    var shouldRelaxCertificateValidation = isDevelopmentOrStaging
+        || isIpOrUntrustedHost
+        || !builder.Configuration.GetValue("Jwt:RequireHttpsMetadata", true);
+
     builder.Host.UseSerilog((ctx, services, cfg) => cfg
         .ReadFrom.Configuration(ctx.Configuration)
         .ReadFrom.Services(services)
@@ -45,8 +78,8 @@ try
         {
             options.Authority = builder.Configuration["Jwt:Authority"];
             options.Audience = builder.Configuration["Jwt:Audience"];
-            options.RequireHttpsMetadata = builder.Configuration.GetValue("Jwt:RequireHttpsMetadata", true);
-            if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
+            options.RequireHttpsMetadata = builder.Configuration.GetValue("Jwt:RequireHttpsMetadata", !shouldRelaxCertificateValidation);
+            if (shouldRelaxCertificateValidation)
             {
                 options.RequireHttpsMetadata = false;
                 options.BackchannelHttpHandler = IdentityProviderBackchannel.CreateHandler(
@@ -93,7 +126,7 @@ try
         .AddHttpMessageHandler<ForwardBearerTokenHandler>()
         .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
 
-    if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
+    if (shouldRelaxCertificateValidation)
     {
         builder.Services.ConfigureAll<Microsoft.Extensions.Http.HttpClientFactoryOptions>(options =>
         {
