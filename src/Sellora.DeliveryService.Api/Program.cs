@@ -46,13 +46,12 @@ try
             options.Authority = builder.Configuration["Jwt:Authority"];
             options.Audience = builder.Configuration["Jwt:Audience"];
             options.RequireHttpsMetadata = builder.Configuration.GetValue("Jwt:RequireHttpsMetadata", true);
-#if DEBUG
-            options.RequireHttpsMetadata = false;
-            options.BackchannelHttpHandler = new HttpClientHandler
+            if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-            };
-#endif
+                options.RequireHttpsMetadata = false;
+                options.BackchannelHttpHandler = IdentityProviderBackchannel.CreateHandler(
+                    builder.Configuration["Jwt:MetadataAddress"] ?? builder.Configuration["Jwt:Authority"]);
+            }
             options.Events = new JwtBearerEvents
             {
                 OnAuthenticationFailed = context =>
@@ -94,18 +93,19 @@ try
         .AddHttpMessageHandler<ForwardBearerTokenHandler>()
         .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
 
-#if DEBUG
-    builder.Services.ConfigureAll<Microsoft.Extensions.Http.HttpClientFactoryOptions>(options =>
+    if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
     {
-        options.HttpMessageHandlerBuilderActions.Add(b =>
+        builder.Services.ConfigureAll<Microsoft.Extensions.Http.HttpClientFactoryOptions>(options =>
         {
-            if (b.PrimaryHandler is HttpClientHandler handler)
+            options.HttpMessageHandlerBuilderActions.Add(b =>
             {
-                handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-            }
+                if (b.PrimaryHandler is HttpClientHandler handler)
+                {
+                    handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                }
+            });
         });
-    });
-#endif
+    }
 
     var app = builder.Build();
 
