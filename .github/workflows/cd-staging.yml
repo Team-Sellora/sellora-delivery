@@ -51,7 +51,9 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          build-args: BUILD_COMMIT_SHA=${{ github.sha }}
+          build-args: |
+            BUILD_COMMIT_SHA=${{ github.sha }}
+            ASPNETCORE_ENVIRONMENT=Staging
           push: true
           tags: ${{ vars.DOCKERHUB_USERNAME }}/sellora-delivery:dev-${{ github.sha }}
 
