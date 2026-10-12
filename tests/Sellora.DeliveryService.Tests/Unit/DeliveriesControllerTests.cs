@@ -226,6 +226,119 @@ public class DeliveriesControllerTests
         _mockOutboxWriter.Verify(w => w.Write(It.IsAny<OutboxMessage>()), Times.Once);
         _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task AssignDeliveryJob_WhenShopCoordinatesFound_StoresCoordinates()
+    {
+        // Arrange
+        var territoryId = Guid.NewGuid();
+        var repId = Guid.NewGuid();
+        var job = CreateTestJob(territoryId: territoryId);
+        
+        _mockRepository.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        _mockOrganizationClient.Setup(c => c.ListSalesRepsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SalesRepSummary> 
+            { 
+                new(repId, "Valid Rep", null, "Active", new TerritoryReference(territoryId, "T1", "Territory 1"))
+            });
+
+        _mockOrganizationClient.Setup(c => c.GetShopCoordinatesAsync(job.ShopId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ShopCoordinates(6.9271m, 79.8612m));
+
+        var request = new AssignDeliveryRequest 
+        { 
+            SalesRepId = repId, 
+            ScheduledDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)) 
+        };
+
+        // Act
+        var result = await _controller.AssignDeliveryJob(job.DeliveryJobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NoContentResult>();
+        job.Status.Should().Be(DeliveryStatus.Assigned);
+        job.ShopLatitude.Should().Be(6.9271m);
+        job.ShopLongitude.Should().Be(79.8612m);
+        
+        _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AssignDeliveryJob_WhenShopCoordinatesNull_StillAssignsWithNullCoordinates()
+    {
+        // Arrange
+        var territoryId = Guid.NewGuid();
+        var repId = Guid.NewGuid();
+        var job = CreateTestJob(territoryId: territoryId);
+        
+        _mockRepository.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        _mockOrganizationClient.Setup(c => c.ListSalesRepsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SalesRepSummary> 
+            { 
+                new(repId, "Valid Rep", null, "Active", new TerritoryReference(territoryId, "T1", "Territory 1"))
+            });
+
+        _mockOrganizationClient.Setup(c => c.GetShopCoordinatesAsync(job.ShopId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ShopCoordinates)null!);
+
+        var request = new AssignDeliveryRequest 
+        { 
+            SalesRepId = repId, 
+            ScheduledDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)) 
+        };
+
+        // Act
+        var result = await _controller.AssignDeliveryJob(job.DeliveryJobId, request, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NoContentResult>();
+        job.Status.Should().Be(DeliveryStatus.Assigned);
+        job.ShopLatitude.Should().BeNull();
+        job.ShopLongitude.Should().BeNull();
+        
+        _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AssignDeliveryJob_WhenOrganizationFails_ThrowsAndLeavesJobUnchanged()
+    {
+        // Arrange
+        var territoryId = Guid.NewGuid();
+        var repId = Guid.NewGuid();
+        var job = CreateTestJob(territoryId: territoryId);
+        
+        _mockRepository.Setup(r => r.GetByIdAsync(job.DeliveryJobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        _mockOrganizationClient.Setup(c => c.ListSalesRepsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SalesRepSummary> 
+            { 
+                new(repId, "Valid Rep", null, "Active", new TerritoryReference(territoryId, "T1", "Territory 1"))
+            });
+
+        _mockOrganizationClient.Setup(c => c.GetShopCoordinatesAsync(job.ShopId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Sellora.DeliveryService.Infrastructure.Dependencies.DependencyUnavailableException(Dependency.Organization));
+
+        var request = new AssignDeliveryRequest 
+        { 
+            SalesRepId = repId, 
+            ScheduledDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)) 
+        };
+
+        // Act
+        var act = () => _controller.AssignDeliveryJob(job.DeliveryJobId, request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<Sellora.DeliveryService.Infrastructure.Dependencies.DependencyUnavailableException>();
+        job.Status.Should().Be(DeliveryStatus.Pending);
+        _mockOutboxWriter.Verify(w => w.Write(It.IsAny<OutboxMessage>()), Times.Never);
+        _mockRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task UpdateStatus_WhenInvalidStatus_ReturnsBadRequest()
     {
