@@ -374,4 +374,90 @@ public class DeliveryJobRepositoryTests : IDisposable
         dict.Should().ContainKey(job1.DeliveryJobId);
         dict.Should().NotContainKey(job2.DeliveryJobId);
     }
+
+    [Fact]
+    public async Task RecordLocationAsync_WhenInTransit_StoresLocationAndUpdatesLastCoordinates()
+    {
+        var job = CreateJob(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        job.Assign(Guid.NewGuid(), "Rep", DateOnly.FromDateTime(DateTime.UtcNow), "op", "AgencyOperator");
+        job.ChangeStatus(DeliveryStatus.InTransit, "rep", "SalesRep");
+        _db.DeliveryJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var capturedAt = DateTimeOffset.UtcNow;
+        var location = DeliveryLocation.Create(
+            job.CompanyId,
+            job.DeliveryJobId,
+            6.9271m,
+            79.8612m,
+            10.0,
+            capturedAt,
+            DateTimeOffset.UtcNow,
+            "rep-user");
+
+        var result = await _repository.RecordLocationAsync(location);
+
+        result.Should().BeTrue();
+        
+        var savedLoc = await _db.DeliveryLocations.FirstOrDefaultAsync(l => l.DeliveryJobId == job.DeliveryJobId);
+        savedLoc.Should().NotBeNull();
+        savedLoc!.Latitude.Should().Be(6.9271m);
+
+        var updatedJob = await _db.DeliveryJobs.FirstAsync(j => j.DeliveryJobId == job.DeliveryJobId);
+        updatedJob.LastLatitude.Should().Be(6.9271m);
+        updatedJob.LastLongitude.Should().Be(79.8612m);
+        updatedJob.LastLocationAt.Should().Be(capturedAt.ToUniversalTime());
+    }
+
+    [Fact]
+    public async Task RecordLocationAsync_WhenLateOlderPoint_StoresLocation_DoesNotOverwriteNewerLatestCoordinates()
+    {
+        var job = CreateJob(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        job.Assign(Guid.NewGuid(), "Rep", DateOnly.FromDateTime(DateTime.UtcNow), "op", "AgencyOperator");
+        job.ChangeStatus(DeliveryStatus.InTransit, "rep", "SalesRep");
+        _db.DeliveryJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var newerTime = DateTimeOffset.UtcNow;
+        var olderTime = newerTime.AddMinutes(-5);
+
+        // First point: newer point
+        var newerLoc = DeliveryLocation.Create(
+            job.CompanyId, job.DeliveryJobId, 6.9271m, 79.8612m, 10.0, newerTime, DateTimeOffset.UtcNow, "rep");
+        await _repository.RecordLocationAsync(newerLoc);
+
+        // Second point: older point arriving late
+        var olderLoc = DeliveryLocation.Create(
+            job.CompanyId, job.DeliveryJobId, 6.5000m, 79.5000m, 15.0, olderTime, DateTimeOffset.UtcNow, "rep");
+        var result = await _repository.RecordLocationAsync(olderLoc);
+
+        result.Should().BeTrue();
+
+        // Both points stored in history
+        var allLocs = await _db.DeliveryLocations.Where(l => l.DeliveryJobId == job.DeliveryJobId).ToListAsync();
+        allLocs.Should().HaveCount(2);
+
+        // Job's Last* columns should still reflect the NEWER point
+        var updatedJob = await _db.DeliveryJobs.FirstAsync(j => j.DeliveryJobId == job.DeliveryJobId);
+        updatedJob.LastLatitude.Should().Be(6.9271m);
+        updatedJob.LastLongitude.Should().Be(79.8612m);
+        updatedJob.LastLocationAt.Should().Be(newerTime.ToUniversalTime());
+    }
+
+    [Fact]
+    public async Task RecordLocationAsync_WhenJobNotInTransit_ReturnsFalse()
+    {
+        var job = CreateJob(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        _db.DeliveryJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var location = DeliveryLocation.Create(
+            job.CompanyId, job.DeliveryJobId, 6.9271m, 79.8612m, 10.0, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "rep");
+
+        var result = await _repository.RecordLocationAsync(location);
+
+        result.Should().BeFalse();
+        var savedLoc = await _db.DeliveryLocations.FirstOrDefaultAsync(l => l.DeliveryJobId == job.DeliveryJobId);
+        savedLoc.Should().BeNull();
+    }
 }
