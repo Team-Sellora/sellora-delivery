@@ -120,6 +120,20 @@ namespace Sellora.DeliveryService.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("fulfilment_type");
 
+                    b.Property<decimal?>("LastLatitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)")
+                        .HasColumnName("last_latitude");
+
+                    b.Property<DateTimeOffset?>("LastLocationAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_location_at");
+
+                    b.Property<decimal?>("LastLongitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)")
+                        .HasColumnName("last_longitude");
+
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
@@ -145,6 +159,16 @@ namespace Sellora.DeliveryService.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ShopId")
                         .HasColumnType("uuid")
                         .HasColumnName("shop_id");
+
+                    b.Property<decimal?>("ShopLatitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)")
+                        .HasColumnName("shop_latitude");
+
+                    b.Property<decimal?>("ShopLongitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)")
+                        .HasColumnName("shop_longitude");
 
                     b.Property<string>("ShopName")
                         .IsRequired()
@@ -239,6 +263,60 @@ namespace Sellora.DeliveryService.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_delivery_job_lines_job_id");
 
                     b.ToTable("delivery_job_lines", (string)null);
+                });
+
+            modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.DeliveryLocation", b =>
+                {
+                    b.Property<Guid>("DeliveryLocationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("delivery_location_id");
+
+                    b.Property<double?>("AccuracyMeters")
+                        .HasColumnType("double precision")
+                        .HasColumnName("accuracy_meters");
+
+                    b.Property<DateTimeOffset>("CapturedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("captured_at");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<Guid>("DeliveryJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delivery_job_id");
+
+                    b.Property<decimal>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)")
+                        .HasColumnName("latitude");
+
+                    b.Property<decimal>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)")
+                        .HasColumnName("longitude");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<string>("RecordedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("recorded_by_user_id");
+
+                    b.HasKey("DeliveryLocationId");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_delivery_locations_company_id");
+
+                    b.HasIndex("DeliveryJobId", "CapturedAt")
+                        .HasDatabaseName("ix_delivery_locations_delivery_job_id_captured_at");
+
+                    b.ToTable("delivery_locations", (string)null);
                 });
 
             modelBuilder.Entity("Sellora.DeliveryService.Domain.Entities.DeliveryStatusHistory", b =>
