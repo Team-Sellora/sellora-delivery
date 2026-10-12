@@ -151,4 +151,58 @@ internal class DeliveryJobRepository(DeliveryDbContext db) : IDeliveryJobReposit
 
         return list.ToDictionary(c => c.DeliveryJobId);
     }
+
+    public async Task<bool> RecordLocationAsync(DeliveryLocation location, CancellationToken ct = default)
+    {
+        var isInMemory = db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var tx = isInMemory ? null : await db.Database.BeginTransactionAsync(ct);
+
+        try
+        {
+            var currentStatus = await db.DeliveryJobs
+                .Where(j => j.DeliveryJobId == location.DeliveryJobId)
+                .Select(j => (Domain.Enums.DeliveryStatus?)j.Status)
+                .FirstOrDefaultAsync(ct);
+
+            if (currentStatus != Domain.Enums.DeliveryStatus.InTransit)
+            {
+                if (tx != null) await tx.RollbackAsync(ct);
+                return false;
+            }
+
+            await db.DeliveryLocations.AddAsync(location, ct);
+            await db.SaveChangesAsync(ct);
+
+            // Conditional update ensures older late points never overwrite newer latest positions,
+            // and bypasses EF entity tracking so high-frequency GPS writes never cause concurrency conflicts.
+            if (isInMemory)
+            {
+                var job = await db.DeliveryJobs.FirstOrDefaultAsync(j => j.DeliveryJobId == location.DeliveryJobId, ct);
+                if (job != null && job.Status == Domain.Enums.DeliveryStatus.InTransit &&
+                    (job.LastLocationAt == null || job.LastLocationAt < location.CapturedAt))
+                {
+                    job.UpdateLatestLocation(location.Latitude, location.Longitude, location.CapturedAt);
+                    await db.SaveChangesAsync(ct);
+                }
+            }
+            else
+            {
+                await db.DeliveryJobs
+                    .Where(j => j.DeliveryJobId == location.DeliveryJobId &&
+                                j.Status == Domain.Enums.DeliveryStatus.InTransit &&
+                                (j.LastLocationAt == null || j.LastLocationAt < location.CapturedAt))
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(j => j.LastLatitude, location.Latitude)
+                        .SetProperty(j => j.LastLongitude, location.Longitude)
+                        .SetProperty(j => j.LastLocationAt, location.CapturedAt), ct);
+            }
+
+            if (tx != null) await tx.CommitAsync(ct);
+            return true;
+        }
+        finally
+        {
+            if (tx != null) await tx.DisposeAsync();
+        }
+    }
 }
