@@ -20,7 +20,6 @@ COPY --from=build /app/publish .
 ARG BUILD_COMMIT_SHA=unknown
 ENV BUILD_COMMIT_SHA=$BUILD_COMMIT_SHA
 ENV ASPNETCORE_URLS=http://+:8080
-ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "Sellora.DeliveryService.Api.dll"]
