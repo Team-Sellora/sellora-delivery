@@ -44,8 +44,10 @@ public sealed class StagingConfigurationTests
 
         Assert.StartsWith("https://", jwt["Authority"]);
         Assert.DoesNotContain(".internal", jwt["Authority"], StringComparison.OrdinalIgnoreCase);
-        Assert.False(string.IsNullOrWhiteSpace(jwt["Audience"]));
-        Assert.NotEqual("sellora-delivery", jwt["Audience"]);
+        var audiences = jwt.GetSection("Audience").Get<string[]>();
+        Assert.NotNull(audiences);
+        Assert.NotEmpty(audiences);
+        Assert.DoesNotContain("sellora-delivery", audiences);
     }
 
     [Theory]
@@ -86,6 +88,9 @@ public sealed class StagingConfigurationTests
             .Build();
 
         Assert.Equal("https://13.61.228.129:9443/oauth2/token", fallbackConfig["Jwt:Authority"]);
-        Assert.Equal("gJnSKbGIur_fls3FPgZg0Dim1p4a", fallbackConfig["Jwt:Audience"]);
+        var audiences = fallbackConfig.GetSection("Jwt:Audience").Get<string[]>();
+        Assert.NotNull(audiences);
+        Assert.Contains("ThNL_9YM7zUgl5k6XWXforF1NNga", audiences);
+        Assert.Contains("gJnSKbGIur_fls3FPgZg0Dim1p4a", audiences);
     }
 }
