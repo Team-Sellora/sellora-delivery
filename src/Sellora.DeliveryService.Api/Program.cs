@@ -32,7 +32,12 @@ try
     }
 
     var jwtAuthority = builder.Configuration["Jwt:Authority"];
-    var jwtAudience = builder.Configuration["Jwt:Audience"];
+    // Same rule as Order, Inventory, Catalog, Organization and Notification:
+    // accept every WSO2 client the web app may sign in with. "Jwt:Audience" can be
+    // a JSON array (Jwt__Audience__0, Jwt__Audience__1) or a single value (Jwt__Audience).
+    var jwtAudiences = builder.Configuration.GetSection("Jwt:Audience").Get<string[]>()
+        ?? new[] { builder.Configuration["Jwt:Audience"] ?? string.Empty };
+    var jwtAudience = string.Join(", ", jwtAudiences);
 
     Log.Information(
         "Startup configuration: environment={Environment}, jwtAuthority={JwtAuthority}, jwtAudience={JwtAudience}",
@@ -77,7 +82,6 @@ try
         .AddJwtBearer(options =>
         {
             options.Authority = builder.Configuration["Jwt:Authority"];
-            options.Audience = builder.Configuration["Jwt:Audience"];
             options.RequireHttpsMetadata = builder.Configuration.GetValue("Jwt:RequireHttpsMetadata", !shouldRelaxCertificateValidation);
             if (shouldRelaxCertificateValidation)
             {
@@ -97,6 +101,7 @@ try
             {
                 ValidateIssuer = true,
                 ValidateAudience = true,
+                ValidAudiences = jwtAudiences,
                 ValidateLifetime = true,
                 RoleClaimType = "roles"
             };
