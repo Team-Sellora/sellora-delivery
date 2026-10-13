@@ -333,6 +333,33 @@ public class DeliveryConfirmationControllerTests
     }
 
     [Fact]
+    public async Task GetDeliveryById_WhenCallerIsTheAssignedRep_SetsIsAssignedToCaller()
+    {
+        SetupUserRole("SalesRep", "rep-user");
+        var job = CreateJob(status: DeliveryStatus.Assigned);
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(job.DeliveryJobId, It.IsAny<CancellationToken>())).ReturnsAsync(job);
+
+        var result = await _controller.GetDeliveryById(job.DeliveryJobId, CancellationToken.None);
+
+        var dto = ((OkObjectResult)result).Value as DeliveryDetailResponse;
+        dto.Should().NotBeNull();
+        dto!.IsAssignedToCaller.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetDeliveryById_WhenCallerIsTheShopOwner_IsAssignedToCallerIsFalse()
+    {
+        var job = CreateJob(status: DeliveryStatus.Assigned);
+        _mockRepository.Setup(r => r.GetByIdWithDetailsAsync(job.DeliveryJobId, It.IsAny<CancellationToken>())).ReturnsAsync(job);
+
+        var result = await _controller.GetDeliveryById(job.DeliveryJobId, CancellationToken.None);
+
+        var dto = ((OkObjectResult)result).Value as DeliveryDetailResponse;
+        dto.Should().NotBeNull();
+        dto!.IsAssignedToCaller.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task GetDeliveryById_WhenImmediateCashSale_ConfirmationIsNull()
     {
         var job = CreateJob(status: DeliveryStatus.Delivered, fulfilmentType: "ImmediateCashSale");
