@@ -512,6 +512,13 @@ public class DeliveriesController : ControllerBase
         var confirmation = await _repository.GetConfirmationByJobIdAsync(id, ct);
         var confirmationState = ResolveConfirmationState(job, confirmation);
 
+        // The web app cannot compare the token's "sub" with AssignedRepId: one is the WSO2
+        // user ID, the other is Organization's SalesRepId. The server knows both, so it
+        // tells the client whether the caller is the rep who owns this delivery.
+        var isAssignedToCaller = GetUserRoles().Contains(SelloraRoles.SalesRep)
+            && callerScope?.SalesRepId is { } callerRepId
+            && job.AssignedRepId == callerRepId;
+
         var dto = new DeliveryDetailResponse(
             job.DeliveryJobId,
             job.DeliveryReference,
@@ -539,7 +546,10 @@ public class DeliveriesController : ControllerBase
             lines,
             history,
             confirmationState
-        );
+        )
+        {
+            IsAssignedToCaller = isAssignedToCaller
+        };
 
         return Ok(dto);
     }
@@ -927,7 +937,11 @@ public record DeliveryDetailResponse(
     IReadOnlyList<DeliveryLineDto> Lines,
     IReadOnlyList<DeliveryStatusHistoryDto> History,
     object? Confirmation
-);
+)
+{
+    /// <summary>True when the caller is the Sales Rep assigned to this delivery.</summary>
+    public bool IsAssignedToCaller { get; init; }
+}
 
 [ExcludeFromCodeCoverage]
 public record DeliveryLineDto(
