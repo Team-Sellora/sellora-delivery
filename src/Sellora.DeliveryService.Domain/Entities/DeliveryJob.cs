@@ -34,6 +34,13 @@ public class DeliveryJob
     public DateTimeOffset? DeliveredAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
+    public decimal? ShopLatitude { get; private set; }
+    public decimal? ShopLongitude { get; private set; }
+
+    public decimal? LastLatitude { get; private set; }
+    public decimal? LastLongitude { get; private set; }
+    public DateTimeOffset? LastLocationAt { get; private set; }
+
     // EF Core xmin optimistic concurrency
     public uint Version { get; private set; }
 
@@ -163,13 +170,17 @@ public class DeliveryJob
         string salesRepName,
         DateOnly scheduledDate,
         string actorUserId,
-        string actorRole)
+        string actorRole,
+        decimal? shopLatitude = null,
+        decimal? shopLongitude = null)
     {
         var oldStatus = Status;
         Status = DeliveryStatus.Assigned;
         AssignedRepId = salesRepId;
         AssignedRepName = salesRepName;
         ScheduledDate = scheduledDate;
+        ShopLatitude = shopLatitude;
+        ShopLongitude = shopLongitude;
 
         _statusHistory.Add(new DeliveryStatusHistory(
             DeliveryJobId,
@@ -180,6 +191,19 @@ public class DeliveryJob
             actorRole: actorRole,
             reason: $"Assigned to {salesRepName} for {scheduledDate:yyyy-MM-dd}",
             occurredAt: DateTimeOffset.UtcNow));
+    }
+
+    public void SetShopCoordinates(decimal? latitude, decimal? longitude)
+    {
+        ShopLatitude = latitude;
+        ShopLongitude = longitude;
+    }
+
+    public void UpdateLatestLocation(decimal latitude, decimal longitude, DateTimeOffset capturedAt)
+    {
+        LastLatitude = latitude;
+        LastLongitude = longitude;
+        LastLocationAt = capturedAt;
     }
 
     public void ChangeStatus(

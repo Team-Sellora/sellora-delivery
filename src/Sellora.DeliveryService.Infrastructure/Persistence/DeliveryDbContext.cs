@@ -18,6 +18,7 @@ public class DeliveryDbContext : DbContext
     public DbSet<DeliveryJobLine> DeliveryJobLines => Set<DeliveryJobLine>();
     public DbSet<DeliveryStatusHistory> DeliveryStatusHistories => Set<DeliveryStatusHistory>();
     public DbSet<DeliveryConfirmation> DeliveryConfirmations => Set<DeliveryConfirmation>();
+    public DbSet<DeliveryLocation> DeliveryLocations => Set<DeliveryLocation>();
     public DbSet<ReturnRequest> ReturnRequests => Set<ReturnRequest>();
     public DbSet<ReturnRequestLine> ReturnRequestLines => Set<ReturnRequestLine>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
@@ -37,6 +38,7 @@ public class DeliveryDbContext : DbContext
         modelBuilder.Entity<DeliveryStatusHistory>().HasQueryFilter(h => h.CompanyId == TenantId);
         modelBuilder.Entity<OutboxMessage>().HasQueryFilter(o => o.CompanyId == TenantId);
         modelBuilder.Entity<DeliveryConfirmation>().HasQueryFilter(c => c.CompanyId == TenantId);
+        modelBuilder.Entity<DeliveryLocation>().HasQueryFilter(l => l.CompanyId == TenantId);
         modelBuilder.Entity<ReturnRequest>().HasQueryFilter(r => r.CompanyId == TenantId);
         modelBuilder.Entity<ReturnRequestLine>().HasQueryFilter(l => l.CompanyId == TenantId);
     }
@@ -68,6 +70,14 @@ public class DeliveryDbContext : DbContext
             if (entry.State == EntityState.Modified || entry.State == EntityState.Deleted)
             {
                 throw new InvalidOperationException("DeliveryConfirmation is append-only and cannot be modified or deleted.");
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<DeliveryLocation>())
+        {
+            if (entry.State == EntityState.Modified || entry.State == EntityState.Deleted)
+            {
+                throw new InvalidOperationException("DeliveryLocation is append-only and cannot be modified or deleted.");
             }
         }
     }

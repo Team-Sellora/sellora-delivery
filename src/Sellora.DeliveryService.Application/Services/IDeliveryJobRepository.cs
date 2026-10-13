@@ -13,4 +13,5 @@ public interface IDeliveryJobRepository
     Task AddConfirmationAsync(DeliveryConfirmation confirmation, CancellationToken ct = default);
     Task<DeliveryConfirmation?> GetConfirmationByJobIdAsync(Guid deliveryJobId, CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, DeliveryConfirmation>> GetConfirmationsByJobIdsAsync(IEnumerable<Guid> jobIds, CancellationToken ct = default);
+    Task<bool> RecordLocationAsync(DeliveryLocation location, CancellationToken ct = default);
 }

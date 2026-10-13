@@ -122,4 +122,196 @@ public class OrganizationClientTests
         // Assert
         await action.Should().ThrowAsync<DependencyRejectedException>();
     }
+
+    [Fact]
+    public async Task GetShopCoordinatesAsync_WhenShopFound_ReturnsCoordinates()
+    {
+        // Arrange
+        var shopId = Guid.NewGuid();
+        var tree = new
+        {
+            CompanyId = Guid.NewGuid(),
+            Name = "Company",
+            Provinces = new[]
+            {
+                new
+                {
+                    ProvinceId = Guid.NewGuid(),
+                    Code = "WP",
+                    Name = "Western",
+                    Agencies = new[]
+                    {
+                        new
+                        {
+                            AgencyId = Guid.NewGuid(),
+                            Name = "Agency A",
+                            Territories = new[]
+                            {
+                                new
+                                {
+                                    TerritoryId = Guid.NewGuid(),
+                                    Code = "T1",
+                                    Name = "Territory 1",
+                                    Shops = new[]
+                                    {
+                                        new
+                                        {
+                                            ShopId = shopId,
+                                            Latitude = 6.9271m,
+                                            Longitude = 79.8612m
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        SetupHttpResponse(HttpStatusCode.OK, tree);
+
+        // Act
+        var result = await _client.GetShopCoordinatesAsync(shopId);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Latitude.Should().Be(6.9271m);
+        result.Longitude.Should().Be(79.8612m);
+    }
+
+    [Fact]
+    public async Task GetShopCoordinatesAsync_WhenNotFound404_ReturnsNull()
+    {
+        // Arrange
+        SetupHttpResponse(HttpStatusCode.NotFound, "");
+
+        // Act
+        var result = await _client.GetShopCoordinatesAsync(Guid.NewGuid());
+
+        // Assert
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetShopCoordinatesAsync_WhenShopNotInHierarchy_ReturnsNull()
+    {
+        // Arrange
+        var tree = new
+        {
+            CompanyId = Guid.NewGuid(),
+            Name = "Company",
+            Provinces = new[]
+            {
+                new
+                {
+                    ProvinceId = Guid.NewGuid(),
+                    Code = "WP",
+                    Name = "Western",
+                    Agencies = new[]
+                    {
+                        new
+                        {
+                            AgencyId = Guid.NewGuid(),
+                            Name = "Agency A",
+                            Territories = new[]
+                            {
+                                new
+                                {
+                                    TerritoryId = Guid.NewGuid(),
+                                    Code = "T1",
+                                    Name = "Territory 1",
+                                    Shops = new[]
+                                    {
+                                        new
+                                        {
+                                            ShopId = Guid.NewGuid(),
+                                            Latitude = 6.9271m,
+                                            Longitude = 79.8612m
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        SetupHttpResponse(HttpStatusCode.OK, tree);
+
+        // Act
+        var result = await _client.GetShopCoordinatesAsync(Guid.NewGuid());
+
+        // Assert
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetShopCoordinatesAsync_WhenCoordinatesZero_ReturnsNull()
+    {
+        // Arrange
+        var shopId = Guid.NewGuid();
+        var tree = new
+        {
+            CompanyId = Guid.NewGuid(),
+            Name = "Company",
+            Provinces = new[]
+            {
+                new
+                {
+                    ProvinceId = Guid.NewGuid(),
+                    Code = "WP",
+                    Name = "Western",
+                    Agencies = new[]
+                    {
+                        new
+                        {
+                            AgencyId = Guid.NewGuid(),
+                            Name = "Agency A",
+                            Territories = new[]
+                            {
+                                new
+                                {
+                                    TerritoryId = Guid.NewGuid(),
+                                    Code = "T1",
+                                    Name = "Territory 1",
+                                    Shops = new[]
+                                    {
+                                        new
+                                        {
+                                            ShopId = shopId,
+                                            Latitude = 0m,
+                                            Longitude = 0m
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        SetupHttpResponse(HttpStatusCode.OK, tree);
+
+        // Act
+        var result = await _client.GetShopCoordinatesAsync(shopId);
+
+        // Assert
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetShopCoordinatesAsync_WhenDownstream500_ThrowsDependencyUnavailableException()
+    {
+        // Arrange
+        SetupHttpResponse(HttpStatusCode.InternalServerError, new { detail = "Internal Error" });
+
+        // Act
+        var action = async () => await _client.GetShopCoordinatesAsync(Guid.NewGuid());
+
+        // Assert
+        await action.Should().ThrowAsync<DependencyUnavailableException>();
+    }
 }

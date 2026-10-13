@@ -21,17 +21,23 @@ public class DeliveriesController : ControllerBase
     private readonly IOrganizationClient _organizationClient;
     private readonly IOutboxWriter _outboxWriter;
     private readonly IReturnRequestRepository? _returnRepository;
+    private readonly ILogger<DeliveriesController> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public DeliveriesController(
         IDeliveryJobRepository repository,
         IOrganizationClient organizationClient,
         IOutboxWriter outboxWriter,
-        IReturnRequestRepository? returnRepository = null)
+        IReturnRequestRepository? returnRepository = null,
+        ILogger<DeliveriesController>? logger = null,
+        TimeProvider? timeProvider = null)
     {
         _repository = repository;
         _organizationClient = organizationClient;
         _outboxWriter = outboxWriter;
         _returnRepository = returnRepository;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DeliveriesController>.Instance;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     [HttpGet("{id:guid}/eligible-reps")]
@@ -92,6 +98,13 @@ public class DeliveriesController : ControllerBase
             return BadRequest(new { detail = $"Sales rep {request.SalesRepId} is not eligible for this delivery job. The rep must be active and assigned to territory {job.TerritoryId}." });
         }
 
+        // Live tracking map is optional and must not block assignment if coordinates are absent or unmapped
+        var shopCoordinates = await _organizationClient.GetShopCoordinatesAsync(job.ShopId, ct);
+        if (shopCoordinates == null)
+        {
+            _logger.LogWarning("Shop coordinates not found in organization hierarchy for DeliveryJob {DeliveryJobId}, Shop {ShopId}", job.DeliveryJobId, job.ShopId);
+        }
+
         var userId = User.FindFirst("sub")?.Value ?? "unknown";
         var role = User.FindFirst("roles")?.Value ?? "AgencyOperator";
         
@@ -100,7 +113,9 @@ public class DeliveriesController : ControllerBase
             eligibleRep.DisplayName, 
             request.ScheduledDate, 
             userId, 
-            role);
+            role,
+            shopCoordinates?.Latitude,
+            shopCoordinates?.Longitude);
 
         var outboxMessage = new OutboxMessage(
             job.CompanyId,
@@ -225,6 +240,124 @@ public class DeliveriesController : ControllerBase
 
         return NoContent();
     }
+
+    [HttpPost("{id:guid}/location")]
+    [Authorize(Policy = RolePolicies.RepWrite)]
+    public async Task<IActionResult> RecordLocation(Guid id, [FromBody] RecordDeliveryLocationRequest request, CancellationToken ct)
+    {
+        var job = await _repository.GetByIdAsync(id, ct);
+        var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
+
+        // 1. Job missing -> 404
+        if (job == null || callerScope?.SalesRepId == null)
+        {
+            return NotFound();
+        }
+
+        // 2. Job not assigned to caller -> 403
+        if (job.AssignedRepId != callerScope.SalesRepId)
+        {
+            return Forbid();
+        }
+
+        // 3. Job status not InTransit -> 409
+        if (job.Status != DeliveryStatus.InTransit)
+        {
+            return Conflict(new { detail = $"Delivery job is in {job.Status} status. Locations can only be recorded when InTransit." });
+        }
+
+        // 4. Validation -> 400 ProblemDetails naming the offending field
+        if (request.Latitude < -90m || request.Latitude > 90m)
+        {
+            return CreateValidationProblem("latitude", "Latitude must be between -90 and 90 degrees.");
+        }
+
+        if (request.Longitude < -180m || request.Longitude > 180m)
+        {
+            return CreateValidationProblem("longitude", "Longitude must be between -180 and 180 degrees.");
+        }
+
+        if (request.AccuracyMeters.HasValue && request.AccuracyMeters.Value < 0)
+        {
+            return CreateValidationProblem("accuracyMeters", "Accuracy meters must be greater than or equal to 0.");
+        }
+
+        var capturedAtUtc = request.CapturedAt.ToUniversalTime();
+        var nowUtc = _timeProvider.GetUtcNow();
+
+        if (capturedAtUtc > nowUtc.AddMinutes(2))
+        {
+            return CreateValidationProblem("capturedAt", "CapturedAt cannot be more than 2 minutes in the future.");
+        }
+
+        if (capturedAtUtc < nowUtc.AddMinutes(-30))
+        {
+            return CreateValidationProblem("capturedAt", "CapturedAt cannot be older than 30 minutes.");
+        }
+
+        var userId = User.FindFirst("sub")?.Value ?? "unknown";
+        var location = DeliveryLocation.Create(
+            companyId: job.CompanyId,
+            deliveryJobId: job.DeliveryJobId,
+            latitude: request.Latitude,
+            longitude: request.Longitude,
+            accuracyMeters: request.AccuracyMeters,
+            capturedAt: capturedAtUtc,
+            receivedAt: nowUtc.UtcDateTime,
+            recordedByUserId: userId);
+
+        var recorded = await _repository.RecordLocationAsync(location, ct);
+        if (!recorded)
+        {
+            return Conflict(new { detail = "Delivery job is no longer InTransit." });
+        }
+
+        _logger.LogInformation("Recorded location for DeliveryJob {DeliveryJobId}", job.DeliveryJobId);
+        return NoContent();
+    }
+
+    [HttpGet("{id:guid}/location")]
+    [Authorize]
+    public async Task<IActionResult> GetLocation(Guid id, CancellationToken ct)
+    {
+        var job = await _repository.GetByIdAsync(id, ct);
+        if (job == null)
+        {
+            return NotFound();
+        }
+
+        var callerScope = await _organizationClient.GetCallerScopeAsync(ct);
+        var accessError = ValidateDeliveryAccess(job, callerScope, GetUserRoles());
+        if (accessError != null)
+        {
+            return accessError;
+        }
+
+        DeliveryTrackingPositionDto? position = null;
+        if (job.LastLatitude.HasValue && job.LastLongitude.HasValue && job.LastLocationAt.HasValue)
+        {
+            position = new DeliveryTrackingPositionDto(
+                job.LastLatitude.Value,
+                job.LastLongitude.Value,
+                job.LastLocationAt.Value);
+        }
+
+        DeliveryTrackingShopDto? shop = null;
+        if (job.ShopLatitude.HasValue && job.ShopLongitude.HasValue)
+        {
+            shop = new DeliveryTrackingShopDto(
+                job.ShopLatitude.Value,
+                job.ShopLongitude.Value);
+        }
+
+        // Returns latest stored position and shop snapshot regardless of status so UI can stop polling or display last known state.
+        return Ok(new DeliveryTrackingResponse(
+            job.DeliveryJobId,
+            job.Status.ToString(),
+            position,
+            shop));
+    }
+
     [HttpGet]
     [Authorize]
     public async Task<IActionResult> GetDeliveries([FromQuery] DeliveryListFilter filter, CancellationToken ct = default)
@@ -656,6 +789,20 @@ public class DeliveriesController : ControllerBase
         );
     }
 
+    private static IActionResult CreateValidationProblem(string field, string detail)
+    {
+        var problem = new ValidationProblemDetails(new Dictionary<string, string[]>
+        {
+            [field] = [detail]
+        })
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "One or more validation errors occurred.",
+            Detail = detail
+        };
+        return new BadRequestObjectResult(problem);
+    }
+
     private List<string> GetUserRoles()
     {
         return User.Claims
@@ -663,6 +810,20 @@ public class DeliveriesController : ControllerBase
             .Select(c => c.Value.Contains('/') ? c.Value.Split('/')[1] : c.Value)
             .ToList();
     }
+}
+
+public class RecordDeliveryLocationRequest
+{
+    [System.Text.Json.Serialization.JsonRequired]
+    public decimal Latitude { get; set; }
+
+    [System.Text.Json.Serialization.JsonRequired]
+    public decimal Longitude { get; set; }
+
+    public double? AccuracyMeters { get; set; }
+
+    [System.Text.Json.Serialization.JsonRequired]
+    public DateTimeOffset CapturedAt { get; set; }
 }
 
 public class AssignDeliveryRequest
@@ -785,4 +946,25 @@ public record DeliveryStatusHistoryDto(
     string actorRole,
     DateTimeOffset occurredAt,
     string? reason
+);
+
+[ExcludeFromCodeCoverage]
+public record DeliveryTrackingPositionDto(
+    decimal Latitude,
+    decimal Longitude,
+    DateTimeOffset CapturedAt
+);
+
+[ExcludeFromCodeCoverage]
+public record DeliveryTrackingShopDto(
+    decimal Latitude,
+    decimal Longitude
+);
+
+[ExcludeFromCodeCoverage]
+public record DeliveryTrackingResponse(
+    Guid DeliveryJobId,
+    string Status,
+    DeliveryTrackingPositionDto? Position,
+    DeliveryTrackingShopDto? Shop
 );

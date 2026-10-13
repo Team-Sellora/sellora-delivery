@@ -47,6 +47,13 @@ internal class DeliveryJobConfiguration : IEntityTypeConfiguration<DeliveryJob>
         builder.Property(j => j.DeliveredAt).HasColumnName("delivered_at");
         builder.Property(j => j.CreatedAt).HasColumnName("created_at");
 
+        builder.Property(j => j.ShopLatitude).HasColumnName("shop_latitude").HasPrecision(9, 6);
+        builder.Property(j => j.ShopLongitude).HasColumnName("shop_longitude").HasPrecision(9, 6);
+
+        builder.Property(j => j.LastLatitude).HasColumnName("last_latitude").HasPrecision(9, 6);
+        builder.Property(j => j.LastLongitude).HasColumnName("last_longitude").HasPrecision(9, 6);
+        builder.Property(j => j.LastLocationAt).HasColumnName("last_location_at");
+
         // xmin is PostgreSQL's built-in row version used as an optimistic concurrency token
         builder.Property(j => j.Version)
             .HasColumnName("xmin")
