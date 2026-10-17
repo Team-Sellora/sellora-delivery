@@ -1,0 +1,42 @@
+Sprint 4 - cross-story tests
+
+Files
+api_sprint4_isolation.py - gateway 401s, roles, scope widening, Company A/B isolation, audit immutability through APIM (CSP-262, 263, 264, 250, 252)
+selenium_sprint4_ui.py - UI checks, one login per run, --scenario deliveries | error-state | empty-state | status-actions | assign-dialog | route-guard | returns-menu | map | audit | reports
+DeliverySprint4QaTests.cs - xUnit + Testcontainers for CSP-261 to 264; copy to sellora-delivery/tests/Sellora.DeliveryService.Tests/Integration/. Tests named _Spec_ are expected to fail on today's dev (KI-02, KI-03, KI-04, KI-06). Syntax-checked only, not compiled.
+
+Run from the QA folder
+python api_sprint4_isolation.py
+python selenium_sprint4_ui.py --base-url https://test.selloralk.tech --user <user> --password '<pw>' --scenario deliveries --scenario route-guard
+cd <sellora-delivery> && dotnet test --filter "FullyQualifiedName~Sprint4Qa" > <QA>/evidence/CSP-263/integration/test-output.txt
+
+Sprint-level manual tests
+
+S4-QA1 End-to-end demo script (staging, one pass, screenshots at each step)
+Step 1: rep places a scheduled-delivery order for the test shop. Order page shows PendingApproval.
+Step 2: agency operator approves. Order Confirmed; Deliveries shows a new Pending delivery for it; the order page's delivery panel links to it.
+Step 3: operator assigns the territory's rep for tomorrow. Status Assigned, rep and date shown.
+Step 4: rep opens My deliveries, starts the delivery. Status In Transit; shop and agency get the In transit email.
+Step 5: rep marks it delivered. Shop and agency get the Delivered email.
+Step 6: shop owner sees "Awaiting your confirmation" and confirms receipt.
+Step 7: shop owner raises a shop return of 5 units with a reason. Agency's Shop returns list shows it pending.
+Step 8: operator approves. Inventory page shows the agency's stock up by 5.
+Step 9: Company Admin opens Audit trail from the order page. OrderPlaced, OrderApproved, OrderConfirmed, DeliveryJobCreated, DeliveryStatusChanged x3, DeliveryConfirmed, ReturnRequested, ReturnAccepted appear in time order. Verify integrity is green.
+Step 10: Reports for this month include the order in sales, order count and the agency breakdown.
+Step 11 (Sprint 3 path): rep completes a cash sale with GPS check-in and payment; the audit trail shows OrderPlaced, OrderConfirmed, PaymentRecorded with the check-in coordinates and the map link.
+
+S4-QA2 Regression of Sprints 1-3 (Delivery and Audit now consume the same topics)
+Run: QA/order_catalog_tests.py --target staging, QA/category_tests.py, QA/price_change_tests.py, api-tenant-isolation.sh, api-crud-roles-sku.sh from the earlier QA folder.
+Run by hand: order creation for both fulfilment types, approval and rejection, shop cancellation inside and outside the window, cash-sale checkout and payment, van return acceptance, stock decrement on confirmation and restore on cancellation, the order emails and low-stock email.
+Watch: Inventory and Notification logs for unknown-event warnings on sellora.delivery.v1 after Delivery starts publishing.
+
+S4-QA3 Coverage report
+Collect from each repository's latest green CI run (Sonar or the coverlet summary). Record one line per service:
+sellora-organization: line % / branch %
+sellora-catalog: line % / branch %
+sellora-inventory: line % / branch %
+sellora-order: line % / branch %
+sellora-notification: line % / branch %
+sellora-delivery: line % / branch %
+sellora-audit: line % / branch %
+sellora-web (Vitest): line % / branch %

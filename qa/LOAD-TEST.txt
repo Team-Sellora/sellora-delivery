@@ -1,0 +1,49 @@
+Sellora Sprint 4 load test
+
+What it does
+Sprint4-load-test.jmx runs eight user groups in parallel for 5 minutes, all through API Manager with real WSO2 access tokens, against the code on sellora-audit dev (9f7d17a) and sellora-delivery dev (94b43b1). Every request name starts with its story, so the results split per story.
+
+CSP-250 audit search: 20 Company Admins search by order reference, open the first entry and search a 7-day range (US-E7-1-Q7).
+CSP-252 dashboards: 10 Company Admins load the month summary with the previous-month comparison, the agency breakdown and the rep breakdown sorted by count; 5 Area Managers load their summary and territory breakdown (scope filter under load).
+CSP-253 export: 2 Company Admins submit a sales-summary CSV, poll the status every 2 s until Ready (at most 30 polls) and download the file.
+CSP-264 delivery queue: 10 Agency Operators load the Pending queue, the full queue and a delivery detail; 5 shop owners load their deliveries.
+CSP-266 returns: the 5 shop owners also load their returns list.
+CSP-267 live tracking: 1 rep posts a GPS position every 5 s to an InTransit delivery while 10 viewers poll the map every 5 s (the same rate as the web map).
+
+Total: 63 concurrent users, ramp-up 60 s, duration 300 s. Think times between 0.3 s and 10 s per group, so this is a realistic busy-hour load, not a stress test.
+
+Pass rule (per request)
+PASS when the 95th percentile response time is at most 1000 ms and errors are at most 1%. Export downloads get 3000 ms because the file is built in the background. The 1000 ms target is the one the team set for US-E7-1-Q7 (audit search with at least 100,000 entries); the same target is used for the other read endpoints.
+
+Before you run it
+1. Java 17 or newer: java -version
+2. Apache JMeter 5.6.3: download the binaries zip from jmeter.apache.org, unzip to C:\apache-jmeter-5.6.3, then either add C:\apache-jmeter-5.6.3\bin to PATH or run: setx JMETER_HOME C:\apache-jmeter-5.6.3 (open a new terminal afterwards). Check: jmeter -v
+3. .env: AUDIT_GW must be set (https://13.61.228.129:8244/sellora-audit/1.0.0 unless APIM uses another context) and all five tokens must be fresh. Tokens last about an hour; the run takes about 7 minutes.
+4. The Audit API must be published in APIM and the web app's application subscribed to it, and staging must have the current images of sellora-audit and sellora-delivery. The first step stops with a clear message if any of this is missing.
+5. Tell the team before you run it. Staging runs on small Azure tiers (the PostgreSQL server is Burstable B1ms) and will be slow for everyone for those minutes.
+
+Run it (PowerShell, in the QA folder)
+.\RUN-LOAD.bat
+Without the Audit API (BUG-04 open): .\RUN-LOAD.bat --delivery-only    - runs only the delivery groups (CSP-264, CSP-266, CSP-267: 26 users); the audit, report and export groups get 0 users
+Lighter or heavier: .\RUN-LOAD.bat --scale 0.5    or    .\RUN-LOAD.bat --scale 2 --duration 600
+A stricter or looser target: .\RUN-LOAD.bat --sla-ms 800
+
+What happens
+1. make_load_data.py checks the tokens and the gateways, collects order references from the audit log and delivery IDs from the operator's queue, and makes sure the rep has one InTransit delivery for the tracking test (it creates one through the real order flow if needed). It writes load\refs.csv, load\deliveries.csv and load\load.properties.
+2. JMeter runs without the GUI and writes load\results.jtl and the HTML dashboard load\report.
+3. load_summary.py prints PASS or FAIL per request and writes evidence\CSP-xxx\jmeter\load-summary.txt for each story.
+4. The dashboard and the raw results are copied to evidence\CSP-250\jmeter\load-report and results.jtl.
+
+load\load.properties contains the access tokens. Never zip, commit or attach it.
+
+Screenshots to take
+evidence\CSP-250\ss\05-load-summary.png - the PowerShell window with the summary of every story (take one per story if it does not fit, and save each in its own story's ss folder as 05-load-summary.png)
+evidence\CSP-250\ss\06-load-dashboard.png - load-report\index.html, the Statistics table (request name, samples, error %, 90th/95th/99th percentile)
+evidence\CSP-250\ss\07-load-response-times.png - the dashboard's Charts > Over Time > Response Time Over Time
+Optional: Azure portal > sellora-server-db > Monitoring > Metrics, CPU percentage during the run
+
+Reading the results
+A FAIL with errors 401: a token expired or BUG-01 is back. Errors 404 on the audit or report calls: the Audit API is not published in APIM. Errors 409 on the tracking post: the InTransit job was moved on; rerun RUN-LOAD.bat, it prepares a new one.
+A FAIL on p95 only, with 0% errors, is a real performance finding: note the request, its p95 and the database CPU at the time, and raise it on the story.
+
+For a realistic log size (US-E7-1-Q7 asks for at least 100,000 entries), the team's script sellora-audit/scripts/seed-audit-entries.sql seeds 100,000 hash-chained entries. Run it only on a test copy of audit_db as audit_owner with the audit service stopped, never on the shared staging database without the team agreeing.

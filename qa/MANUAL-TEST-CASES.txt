@@ -1,0 +1,112 @@
+Sellora Sprint 4 - manual test cases
+
+These are the parts no script can do alone: mailboxes, stopping slots, offset resets, and the sprint-level runs. Every script prints the same steps as MANUAL lines with the exact order references of that run, so start from the script output when it exists. Save screenshots to evidence/<CSP>/ss/ like the earlier sprints.
+
+US-E6-1-Q3 Cash sale sends no delivery email (CSP-261)
+Steps: complete a cash sale with GPS check-in and payment as the test rep. Open the shop owner's mailbox.
+Expected: one payment receipt for the order reference, no "delivered" email. Notification's Failed notifications page shows nothing for it.
+
+US-E6-1-Q4 Duplicate event on staging (CSP-261)
+Steps: stop the sellora-delivery staging slot. In Confluent Cloud > Consumers > sellora.delivery.order.v1 (or kafka-consumer-groups --reset-offsets --shift-by -5 --execute) move the group back five messages. Start the slot and wait a minute.
+Expected: GET /api/deliveries?orderId=<each of the last five orders>&includeHandovers=true has totalCount 1 for each. The log stream shows DeliveryEventDuplicate with the order reference.
+
+US-E6-1-Q6 Consumer downtime (CSP-261)
+Steps: stop the Delivery slot, approve two scheduled-delivery orders, start the slot.
+Expected: each order has exactly one job within a minute. delivery_creation_tests.py --interactive walks through this.
+
+US-E6-2-Q3 Colombo midnight window (CSP-262)
+Steps: run python delivery_assignment_tests.py --target staging between 00:00 and 05:30 Sri Lanka time.
+Expected: "Q3 today in Colombo" passes. The script notes when it runs inside the window.
+
+US-E6-2-Q6 Eligible reps follow Organization (CSP-262)
+Steps: deactivate the territory's rep in Organization, open Assign on a pending delivery, then reactivate the rep and open it again.
+Expected: first time the dialog says "No eligible reps found"; second time the rep is listed. Run with --interactive to have the script check the API side.
+
+US-E6-2-Q7 Organization down (CSP-262)
+Steps: stop the sellora-organization staging slot, call eligible-reps and assignment as the operator.
+Expected: both 503 and the body names Organization; the job stays Pending.
+
+US-E6-3-Q6 Delivery emails (CSP-263, closes US-E5-4's delivery half)
+Steps: move one order through Assigned, InTransit, Delivered; another to Failed with a reason; cancel a third from the shop owner's order page while Assigned.
+Expected: shop and agency mailboxes each get exactly one email for InTransit, Delivered, Failed and Cancelled; none for Assigned; none for a cash-sale record. The failed-notifications page is empty for these references.
+
+US-E6-3-Q7 Kafka outage (CSP-263, local)
+Steps: python delivery_lifecycle_tests.py --target local --interactive and follow the prompts (docker stop sellora-kafka, move a job to InTransit, docker start sellora-kafka).
+Expected: the move answers 204 while Kafka is down; exactly one DeliveryStatusChanged InTransit after Kafka returns.
+
+US-E6-4-Q6 UI states (CSP-264)
+Steps: stop the Delivery staging slot and run selenium_sprint4_ui.py --scenario error-state; then log in as a user of a company with no deliveries and run --scenario empty-state.
+Expected: an error message under the page header (not a blank page, not the empty message); the empty message and "0 deliveries".
+
+US-E6-5-Q2 Dispute email (CSP-265)
+Steps: as the shop owner, report a problem on a delivered job with "2 cases missing".
+Expected: shop and agency each receive one dispute email that quotes the note.
+
+US-E6-6-Q4 Inventory evidence (CSP-266)
+Steps: after approving the 5-unit return, in inventory_db run select * from processed_inventory_event where event_id = '<eventId of the ReturnAccepted>' and select * from stock_movement order by occurred_at desc limit 5.
+Expected: one processed row; one movement of +5 for the agency's owner.
+
+US-E6-6-Q7 Replay on staging (CSP-266)
+Steps: stop Inventory staging, move its consumer group on sellora.delivery.v1 back a few messages, start it.
+Expected: stock does not rise again. Locally the script replays the exact message instead.
+
+US-E6-6-Q8 Inventory down (CSP-266)
+Steps: stop Inventory, approve a requested return.
+Expected: 503 "Stock service unavailable, try again" on the screen; the return stays Requested; no ReturnAccepted.
+
+US-E6-7-Q3 Map (CSP-267)
+Steps: as the rep, open an InTransit job and leave the page open (location sharing); as the shop owner open the same delivery.
+Expected: two markers, the delivery marker moves within 30 s. With maps.googleapis.com blocked (selenium --scenario map, or DevTools > Network request blocking) the page shows the last update time and "Map unavailable", and the history still renders.
+
+US-E7-1-Q3b Service-layer immutability (CSP-250)
+Steps: open the passing CI run of sellora-audit.
+Expected: the AuditDbContext Modified/Deleted test and the route-inspection test are green. Link the run on the story.
+
+US-E7-1-Q3c DB grants on Azure (CSP-250)
+Steps: psql as audit_app with audit-db-grants.sql, output to evidence/CSP-250/db/grants-staging.txt.
+Expected: SELECTs work; UPDATE, DELETE, TRUNCATE, ALTER, DROP each say permission denied.
+
+US-E7-1-Q5 Redelivery (CSP-250)
+Steps: note GET /api/audit totalCount and verify; stop Audit; kafka-consumer-groups --group sellora.audit.v1 --all-topics --reset-offsets --to-earliest --execute; start Audit; wait until the log is quiet.
+Expected: same totalCount; verify still verified.
+
+US-E7-1-Q7 Performance (CSP-250)
+Steps: run RUN-LOAD.bat (see LOAD-TEST.txt). For a realistic log size first seed 100,000 entries on a test copy with sellora-audit scripts/seed-audit-entries.sql (as audit_owner, audit service stopped).
+Expected: p95 under 1000 ms for both samplers with 20 users. Record p95, error % and throughput on the story.
+
+US-E7-2-Q1 Spreadsheet (CSP-252)
+Steps: open evidence/CSP-252/calc/US-E7-2-Q1-<range>.csv (written by reporting_tests.py) in Excel; the last rows hold the totals by the BE2 definition.
+Expected: every dashboard card equals the sheet. Attach the sheet with the screenshot of /reports for the same range.
+
+US-E7-3-Q4 Expiry on staging (CSP-253)
+Steps: 24 hours after an export, download it again; then check reporting.report_export.
+Expected: 410; status Expired and content IS NULL.
+
+S4-QA1 End-to-end demo script (staging, one pass, screenshots at each step)
+Step 1: rep places a scheduled-delivery order for the test shop. Order page shows PendingApproval.
+Step 2: agency operator approves. Order Confirmed; Deliveries shows a new Pending delivery for it; the order page's delivery panel links to it.
+Step 3: operator assigns the territory's rep for tomorrow. Status Assigned, rep and date shown.
+Step 4: rep opens My deliveries, starts the delivery. Status In Transit; shop and agency get the In transit email.
+Step 5: rep marks it delivered. Shop and agency get the Delivered email.
+Step 6: shop owner sees "Awaiting your confirmation" and confirms receipt.
+Step 7: shop owner raises a shop return of 5 units with a reason. Agency's Shop returns list shows it pending.
+Step 8: operator approves. Inventory page shows the agency's stock up by 5.
+Step 9: Company Admin opens Audit trail from the order page. OrderPlaced, OrderApproved, OrderConfirmed, DeliveryJobCreated, DeliveryStatusChanged x3, DeliveryConfirmed, ReturnRequested, ReturnAccepted appear in time order. Verify integrity is green.
+Step 10: Reports for this month include the order in sales, order count and the agency breakdown.
+Step 11 (Sprint 3 path): rep completes a cash sale with GPS check-in and payment; the audit trail shows OrderPlaced, OrderConfirmed, PaymentRecorded with the check-in coordinates and the map link.
+
+S4-QA2 Regression of Sprints 1-3 (Delivery and Audit now consume the same topics)
+Run: QA/order_catalog_tests.py --target staging, QA/category_tests.py, QA/price_change_tests.py, api-tenant-isolation.sh, api-crud-roles-sku.sh from the earlier QA folder.
+Run by hand: order creation for both fulfilment types, approval and rejection, shop cancellation inside and outside the window, cash-sale checkout and payment, van return acceptance, stock decrement on confirmation and restore on cancellation, the order emails and low-stock email.
+Watch: Inventory and Notification logs for unknown-event warnings on sellora.delivery.v1 after Delivery starts publishing.
+
+S4-QA3 Coverage report
+Collect from each repository's latest green CI run (Sonar or the coverlet summary). Record one line per service:
+sellora-organization: line % / branch %
+sellora-catalog: line % / branch %
+sellora-inventory: line % / branch %
+sellora-order: line % / branch %
+sellora-notification: line % / branch %
+sellora-delivery: line % / branch %
+sellora-audit: line % / branch %
+sellora-web (Vitest): line % / branch %

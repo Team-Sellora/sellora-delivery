@@ -1,0 +1,91 @@
+Sellora Sprint 4 QA pack - how to run it
+
+Quick start (Windows - all you do by hand is the screenshots)
+1. Copy .env.example to .env. Paste the five access tokens (acme_admin, acmeareamanager, acmeagencyop, acmesalesrep, buddika). Tokens last about 1 hour, so do this right before step 2.
+2. Double-click RUN-ALL-STAGING.bat. It runs every story script against staging plus the gateway and isolation checks, and writes evidence\CSP-xxx\api\*.txt. It ends with one RESULT line per story.
+3. Optional: RUN-INTEGRATION.bat C:\path\to\sellora-delivery (needs .NET 8 SDK and Docker Desktop running). Writes evidence\CSP-261..264\integration\test-output.txt.
+4. Open evidence\CSP-xxx\README.txt for each story. The top section lists the exact screenshots to take and the file name for each. Save them in that story's ss folder.
+5. Load test: .\RUN-LOAD.bat (needs Java 17 and JMeter 5.6, see LOAD-TEST.txt). Writes evidence\CSP-xxx\jmeter\load-summary.txt per story.
+6. Raise the bugs in BUGS.txt in Jira and attach the evidence files it names.
+Never zip or commit .env or load\load.properties - both hold live tokens.
+
+Scope: every QA sub-task in sprint4-backlog.md - US-E6-1 to US-E6-7 (CSP-261 to CSP-267), US-E7-1 to US-E7-3 (CSP-250, CSP-252, CSP-253) and the sprint-level S4-QA1 to S4-QA3. Same layout as the Sprint 3 QA folder: Python API scripts per story, a Python gateway/isolation script, Selenium, JMeter, an xUnit file for the repo, and evidence written to evidence/<CSP>/.
+
+State of the code on 10 Oct 2026: E6-1 to E6-4 are on sellora-delivery dev and run fully. E6-5 is on feature/CSP-265-delivery-confirmation (not merged). E6-6, E6-7 and all of E7 have no code yet (no sellora-audit repository). Their scripts are written against the backlog and report BLOCK until the endpoints exist, then run unchanged. Read KNOWN-ISSUES.txt first - it lists 18 defects found while reading the code, each mapped to the check that proves it.
+
+Setup
+1. Python 3.10+. pip install selenium (UI) and pip install confluent-kafka (only for Kafka checks against Confluent Cloud).
+2. Copy .env.example to .env. Fill the gateway URLs and the nine tokens. IDs left blank are read from Organization /api/me/scope of the matching token.
+3. Test data the scripts need: one shop (SHOP_A) in a territory whose rep is TOKEN_REP_A, in the agency of TOKEN_OPERATOR_A; two products with agency stock (PRODUCT_1_ID, PRODUCT_2_ID, at least 60 units); SHOP_A_LAT / SHOP_A_LNG so cash-sale check-ins pass the 300 m radius; a second shop, rep and agency for the scope checks; a Company B admin.
+4. For bash: WSL or Git Bash with jq. Run sed -i 's/\r$//' .env *.sh once.
+5. Never zip or commit .env or evidence/*/jmeter/*.properties - both contain live tokens.
+
+Result labels in every evidence file
+PASS - the acceptance criterion holds.
+FAIL - it does not; raise a bug with the evidence file.
+WARN - works, but differs from the written contract or backlog wording; discuss before raising.
+BLOCK - could not be tested (endpoint not deployed, Kafka unreachable, value missing in .env); the reason is printed.
+MANUAL - a person has to do this step; the exact steps and this run's order references are printed. Full list in MANUAL-TEST-CASES.txt.
+
+Targets and how delivery jobs are created
+--target staging: calls go through API Manager. Jobs come from real orders: the rep places a scheduled-delivery order through the Order API, the operator approves it, and the script waits for the delivery job. Kafka checks run only when KAFKA_* is set; publishing test messages to staging topics needs --allow-produce.
+--target local: Delivery on DELIVERY_LOCAL with the local Kafka container (sellora-kafka) and DB containers. Jobs are created by publishing OrderConfirmed events shaped exactly like sellora-order's contract, with the real IDs of the test shop, agency, territory and rep, so the same tokens act on them. This is the only way to run the malformed-message, duplicate, Kafka-outage, month-end and tamper cases.
+--source order|kafka overrides how jobs are created. --interactive pauses for manual steps (stop a slot, restart Kafka) instead of marking them MANUAL.
+
+Run order (same as the build order in the backlog)
+Track A - Delivery
+1. python delivery_creation_tests.py --target staging            CSP-261  US-E6-1-Q1..Q6
+2. python delivery_queue_tests.py --target staging               CSP-264  US-E6-4-Q1..Q5 + Area Manager + web field contract
+3. python delivery_assignment_tests.py --target staging          CSP-262  US-E6-2-Q1..Q7 + D1
+4. python delivery_lifecycle_tests.py --target staging           CSP-263  US-E6-3-Q1..Q7 + version token check
+5. python shop_returns_tests.py --target staging                 CSP-266  US-E6-6-Q1..Q8
+6. python delivery_confirmation_tests.py --target staging        CSP-265  US-E6-5-Q1..Q4
+7. python delivery_tracking_tests.py --target staging            CSP-267  US-E6-7-Q1..Q2
+8. Local pass for the Kafka-only cases: python delivery_creation_tests.py --target local; python delivery_lifecycle_tests.py --target local --interactive
+Track B - Audit and reporting
+9. python audit_log_tests.py --target staging                    CSP-250  US-E7-1-Q1..Q6, Q8 (Q4 tamper: --target local --allow-tamper)
+10. python RUN-LOAD.bat (Sprint4-load-test.jmx, see LOAD-TEST.txt)   CSP-250  US-E7-1-Q7
+11. python reporting_tests.py --target staging [--from YYYY-MM-DD --to YYYY-MM-DD]    CSP-252  US-E7-2-Q1..Q7 (month-end case: --target local)
+12. python report_export_tests.py --target staging                CSP-253  US-E7-3-Q1..Q4 + D1
+Cross-cutting
+13. python api_sprint4_isolation.py     gateway 401s, roles, scope widening, Company A/B isolation, audit immutability through APIM
+14. Selenium, once per persona (examples below)
+15. xUnit: copy DeliverySprint4QaTests.cs to sellora-delivery/tests/Sellora.DeliveryService.Tests/Integration/ and run dotnet test --filter "FullyQualifiedName~Sprint4Qa" > evidence/CSP-263/integration/test-output.txt (needs Docker for Testcontainers; tests named _Spec_ are expected to fail on today's dev - they are KI-02, KI-03, KI-04, KI-06)
+16. S4-QA1 demo script, S4-QA2 regression and S4-QA3 coverage from MANUAL-TEST-CASES.txt
+
+Selenium examples
+Operator queue, detail and assign dialog: python selenium_sprint4_ui.py --base-url https://test.selloralk.tech --user <operator> --password '<pw>' --scenario deliveries --scenario assign-dialog --delivery-id <pending delivery id> --delivery-gateway-host <apim host>
+Shop owner and rep views: same command with --scenario deliveries --scenario route-guard for each user
+Rep status buttons (catches KI-01): --user <rep> --scenario status-actions --delivery-id <assigned delivery id>
+Error state: stop the Delivery staging slot, then --scenario error-state
+Audit and reports: --user <company admin> --scenario audit --order-reference <ORD-...> --scenario reports --scenario route-guard
+Map fallback: --user <shop owner> --scenario map --delivery-id <in-transit delivery id>
+
+Where each QA sub-task is checked
+US-E6-1-Q1..Q6: delivery_creation_tests.py (Q3 email, Q4/Q6 on staging: MANUAL-TEST-CASES.txt)
+US-E6-2-Q1..Q7: delivery_assignment_tests.py; Q4 also api_sprint4_isolation.py; FE2 dialog: selenium assign-dialog
+US-E6-3-Q1..Q7: delivery_lifecycle_tests.py; Q6 emails manual; FE1: selenium status-actions; transition table and history: DeliverySprint4QaTests.cs
+US-E6-4-Q1..Q6: delivery_queue_tests.py; Q3/Q5 also api_sprint4_isolation.py; Q6 selenium deliveries, error-state, empty-state
+US-E6-5-Q1..Q4: delivery_confirmation_tests.py; Q2 emails manual
+US-E6-6-Q1..Q8: shop_returns_tests.py; FE2 menu label: selenium returns-menu
+US-E6-7-Q1..Q3: delivery_tracking_tests.py; Q3 selenium map
+US-E7-1-Q1..Q8: audit_log_tests.py; Q3c audit-db-grants.sql; Q4 audit-tamper.sql or --allow-tamper; Q7 RUN-LOAD.bat (Sprint4-load-test.jmx); FE: selenium audit
+US-E7-2-Q1..Q7: reporting_tests.py (writes the calculation CSV); Q7 route guard: selenium route-guard / reports
+US-E7-3-Q1..Q4: report_export_tests.py (keeps every downloaded file)
+DevOps checks covered on the way: US-E6-2-D1 and E7-1-D5 (401 at the gateway), US-E6-4-D1 (new endpoints reachable through APIM - a 404 from the gateway on a deployed endpoint shows here as BLOCK), US-E7-3-D1 (Content-Disposition exposed)
+
+Evidence layout (matches the Sprint 3 folder)
+evidence/<CSP>/api/<script>-<target>.txt - every check with PASS/FAIL/WARN/BLOCK/MANUAL and totals
+evidence/<CSP>/kafka/*.json - captured events and dead letters (topic, partition, offset, headers, payload)
+evidence/<CSP>/calc/*.csv - the manual calculation behind the dashboard figures
+evidence/<CSP>/files/ - downloaded CSV and PDF exports
+evidence/<CSP>/db/ - grant checks
+evidence/<CSP>/selenium/<time>-<host>-<user>/ - screenshots, network-summary.json (tokens redacted), results.txt
+evidence/<CSP>/jmeter/ - properties, .jtl and the HTML report
+evidence/<CSP>/ss/ - your manual screenshots
+
+Things to know
+The backlog's field names for unbuilt endpoints (returns, location, audit, reports, export) are used as written. If the team names a field differently, the scripts read JSON case-insensitively and try a few spellings (FIELD_NAMES at the top of reporting_tests.py); change it there rather than editing checks.
+Every run creates new orders with unique references and never deletes anything, so runs can be repeated. Orders placed on staging consume stock of PRODUCT_1_ID; top it up between full runs.
+Kafka reads on Confluent Cloud use a throw-away consumer group (qa-sprint4-xxxx) and never commit offsets, so they do not affect any service.
+The scripts were smoke-run against a stand-in of the Delivery, Order and Organization APIs built from the dev code; they have not yet been run against staging. The xUnit file was syntax-checked only (no NuGet access while it was written) - expect to fix trivial compile issues on first build.

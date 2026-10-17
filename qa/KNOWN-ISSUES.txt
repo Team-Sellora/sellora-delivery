@@ -1,0 +1,121 @@
+Sellora Sprint 4 - defects found while writing the tests (code review, before execution)
+
+Baseline read: sellora-delivery dev fca3952 (merged CSP-261..264), sellora-delivery feature/CSP-265-delivery-confirmation f11cc0a (not merged), sellora-web develop 850cf73 (CSP-262/263 merged), sellora-web feature/CSP-264-delivery-queue 3d07e34 (not merged). sellora-audit does not exist under Team-Sellora yet; US-E6-6 and US-E6-7 have no backend code. Every item names the test that proves it, so each can be raised in Jira with evidence after the first run.
+
+KI-01 Web status buttons always fail (400)
+Story: CSP-263 (US-E6-3-FE1 against BE2)
+Severity: High - no delivery can be moved from the UI
+Where: sellora-web src/features/deliveries/types.ts (UpdateDeliveryStatusPayload has no version), DeliveryStatusActions.tsx, MarkFailedDialog.tsx; sellora-delivery UpdateDeliveryStatusRequest.Version is [JsonRequired]
+What: the web client sends { status, reason }; the API rejects any body without version with 400 before any rule runs.
+Expected: the client sends the version it got from GET /api/deliveries/{id}, or the API treats version as optional.
+Caught by: delivery_lifecycle_tests.py US-E6-3-EXTRA "request without 'version'"; selenium_sprint4_ui.py --scenario status-actions ACT-02
+
+KI-02 Stale version answers 412, not 409
+Story: CSP-263
+Severity: Medium
+Where: DeliveriesController.UpdateStatus catch DbUpdateConcurrencyException -> StatusCode(412)
+What: when another device already moved the job, the API answers 412; US-E6-3-FE1 shows 409 text inline and refetches.
+Expected: 409 with a message.
+Caught by: delivery_lifecycle_tests.py US-E6-3-EXTRA "stale version"; DeliverySprint4QaTests Spec_Stale_version_answers_409_not_412
+
+KI-03 Two operators assigning at once -> 500
+Story: CSP-262 (BE3: "two operators assigning at once get one success and one 409")
+Severity: High
+Where: DeliveriesController.AssignDeliveryJob saves without catching DbUpdateConcurrencyException; ExceptionMiddleware turns it into 500
+Expected: one 204 and one 409.
+Caught by: delivery_assignment_tests.py US-E6-2-Q5 "two simultaneous assignments"; DeliverySprint4QaTests Spec_Concurrent_assignment
+
+KI-04 Agency Operator can pass another agency's salesRepId (no 403)
+Story: CSP-264 (AC3 and BE1: an out-of-scope shopId / salesRepId returns 403)
+Severity: High - the scope-widening rule is only enforced for Shop Owner and Sales Rep
+Where: DeliveriesController.GetDeliveries checks shopId only for ShopOwner and salesRepId only for SalesRep
+What: an operator (or Area Manager) gets 200 with a filtered list; nothing leaks, but the widening attempt is invisible, which the backlog explicitly forbids.
+Caught by: delivery_queue_tests.py US-E6-4-Q3; api_sprint4_isolation.py SCOPE-02; DeliverySprint4QaTests Spec_Operator_passing_another_agencys_rep
+
+KI-05 Queue and detail fields do not match what the web client reads
+Story: CSP-264 (FE1, FE2)
+Severity: Medium
+Where: list item DTO has territoryId and no orderId; web DeliverySummary expects orderId and territory; detail line has lineId, web expects id
+What: Order Ref links go to /orders/undefined, the Territory column is blank, React keys on lines are undefined.
+Caught by: delivery_queue_tests.py US-E6-4-FE; selenium_sprint4_ui.py --scenario deliveries DEL-07, DEL-08
+
+KI-06 Delivery events are PascalCase JSON
+Story: CSP-261 / CSP-263 (BE4 "match field names exactly")
+Severity: Medium - works today only because Notification and Inventory read case-insensitively
+Where: JsonSerializer.Serialize(...) with default options in DeliveriesController, DeliveryJobService, OrderEventConsumerService
+What: payloads arrive as "EventId", "OrderReference", "Shop": {"ShopId" ...}; both contract files say camelCase. sellora-audit must read case-insensitively or extraction (orderReference, actor) will silently miss.
+Expected: JsonSerializerDefaults.Web, like sellora-order.
+Caught by: WARN lines in delivery_creation_tests.py / delivery_lifecycle_tests.py; DeliverySprint4QaTests Spec_DeliveryStatusChanged_payload_matches_Notification_contract_exactly
+
+KI-07 Kafka headers differ from Order's, correlation ID lost
+Story: CSP-263 BE4 ("Headers = Order's five headers with event-id as a UTF-8 string"), backlog 0.7
+Severity: Medium (blocks US-E7-1-Q1 correlation for delivery events)
+Where: KafkaEventPublisher sends x-event-type, x-company-id, x-correlation-id (= outbox message ID), x-service-source; no event-id, no schema-version. correlationId in the payload is always null for status changes.
+Expected: event-id, event-type, schema-version, company-id, correlation-id (the request's X-Correlation-ID).
+Caught by: delivery_lifecycle_tests.py US-E6-3-Q1 header and correlationId checks (needs Kafka access)
+
+KI-08 Cancellation reason format
+Story: CSP-263 BE5 (reason "{source}: {reason}")
+Severity: Low
+Where: OrderEventConsumerService writes "Order: {reason}"; the source (ShopCancellation / AgencyRejection / StockHoldExpired) is dropped
+Caught by: delivery_lifecycle_tests.py US-E6-3-Q5 "reason format"
+
+KI-09 Cancelled job stays in the rep's list
+Story: CSP-263 QA-Q5 ("gone from the rep's list")
+Severity: Low - decide whether the rep list hides Cancelled by default (API) or the page filters it (web)
+Caught by: delivery_lifecycle_tests.py US-E6-3-Q5 "gone from the rep's default list"
+
+KI-10 History rows do not expose the actor's user ID
+Story: CSP-263 QA-Q1 ("History shows both rows with the rep's user ID")
+Severity: Low
+Where: DeliveryStatusHistoryDto has status, actorRole, occurredAt, reason only; actor_user_id is stored in the DB
+Caught by: WARN in delivery_lifecycle_tests.py US-E6-3-Q1 (local run also checks the DB column)
+
+KI-11 Second OrderConfirmed for the same order goes to the dead-letter topic
+Story: CSP-261 BE3 ("on conflict, log DeliveryEventDuplicate with the order reference and commit the offset")
+Severity: Low
+Where: only the eventId receipt is checked before insert; a different eventId for the same order fails on ix_delivery_jobs_company_order, the generic catch dead-letters it
+Caught by: WARN in delivery_creation_tests.py US-E6-1-Q4 (local)
+
+KI-12 DeliveryJobCreated has no schemaVersion
+Story: CSP-261 BE4
+Severity: Low - every other Sellora event carries schemaVersion "1.0"; the contract doc example omits it too
+Caught by: WARN in delivery_creation_tests.py US-E6-1-Q1
+
+KI-13 Confirmation branch (not merged) - three deviations
+Story: CSP-265
+Severity: Medium
+Where: feature/CSP-265-delivery-confirmation, DeliveriesController.ConfirmDelivery
+What: (a) a second confirmation with the same outcome returns 200, the AC says 409; (b) the shop check is skipped when Organization returns no ShopId for the caller (callerScope?.ShopId != null && ...), so a Shop Owner token with an unresolved scope can confirm any delivery in the company; (c) the table is "DeliveryConfirmations" with PascalCase columns while every other table is snake_case.
+Caught by: delivery_confirmation_tests.py US-E6-5-Q4 (a); (b) needs a shop-owner user with no shop in Organization - add to manual cases if one exists
+
+KI-14 Role prefixes break the policies on dev
+Story: CSP-262 / CSP-263
+Severity: Medium until CSP-265 merges
+Where: dev RolePolicies uses RequireRole, which does not strip the WSO2 "Internal/" prefix; GetUserRoles (list/detail) does. The CSP-265 branch replaces this with HasAnyRole.
+What: if the token carries "Internal/AgencyOperator", eligible-reps, assignment and status return 403 while the list works.
+Caught by: delivery_assignment_tests.py Q1 (403 instead of 200/204) on a gateway whose tokens carry prefixed roles
+
+KI-15 Web shows actions to roles that cannot use them
+Story: CSP-262 FE2, CSP-263 FE1
+Severity: Low - the server refuses, but the backlog says show only to the operator / the assigned rep
+Where: DeliveryDetailPage renders "Assign Delivery" for every role on a Pending job; DeliveryStatusActions renders status buttons for every role
+Caught by: selenium_sprint4_ui.py --scenario deliveries DEL-10, DEL-11
+
+KI-16 Queue filters incomplete
+Story: CSP-264 FE1
+Severity: Low
+What: the status filter has no "Cancelled" option; the rep filter is a free-text GUID box.
+
+KI-17 Local configuration clashes
+Severity: Low (slows local QA)
+What: appsettings.Development.json points DeliveryDb at localhost:5433 (sellora-infra's organization-db port) with user postgres / database sellora_delivery; the repo's docker-compose starts Postgres on 5432 with sellora/sellora/delivery_db; Jwt Authority is a raw IP. sellora-infra has no delivery-db yet (US-E6-1-D3). The QA .env assumes a container named sellora-delivery-db.
+
+KI-18 US-E7-1-Q2 wording: "adjust stock (inventory)" produces no event
+Severity: Info
+What: Inventory publishes only LowStockDetected on sellora.inventory.v1. A plain adjustment creates no audit entry; the adjustment has to cross the reorder threshold. audit_log_tests.py looks for LowStockDetected.
+
+KI-19 Cash-sale DeliveredAt is the payment time, not the GPS check-in time
+Severity: Low
+What: US-E6-1-Q3 expects DeliveredAt to equal the check-in time. Delivery copies checkoutLocation.checkedInAt from OrderConfirmed, but Order fills that field with order.CheckedOutAt (the payment time) before falling back to the check-in RecordedAt (OrderEventOutbox.CheckoutLocation). On 14 Oct the difference was 2 s (check-in 18:07:05.665Z, deliveredAt 18:07:07.688Z). Owner: Order, or the team agrees the payment time is the hand-over time and the test changes.
+

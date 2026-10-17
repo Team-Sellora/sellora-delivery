@@ -1,0 +1,34 @@
+Sprint 4 bugs - status on 14 Oct 2026 (sellora-delivery dev 94b43b1, sellora-audit dev 770ccad)
+
+BUG-01
+Title: Delivery API returns 401 for valid access tokens on staging
+Priority: Highest (blocker)
+Story: blocks CSP-261 to CSP-267
+Status: retested 14 Oct 23:40 - fixed, close it. Delivery GET /api/deliveries -> 200 through APIM in every story of RUN-ALL-STAGING. Fixed by PR #18 (certificate backchannel), PR #19 (Staging config and ASPNETCORE_ENVIRONMENT), PR #22 CSP-538 (accept both WSO2 client audiences, ThNL_9YM7zUgl5k6XWXforF1NNga and gJnSKbGIur_fls3FPgZg0Dim1p4a). The audience fix is the likely real cause: the token's aud did not match the single configured audience.
+
+BUG-02
+Title: Concurrent assignment returns 500 instead of one success and one 409
+Priority: High
+Story: CSP-262 (BE3)
+Status: still open on dev 94b43b1 - AssignDeliveryJob has no DbUpdateConcurrencyException catch (the only catch is in UpdateStatus). Reproduced on 14 Oct: staging answered [204, 500] to two simultaneous assignments, and the integration test fails.
+Retest: RUN-INTEGRATION.bat - Sprint4Qa_CSP262_Spec_Concurrent_assignment_gives_one_success_and_one_409 must pass.
+
+BUG-03
+Title: Agency Operator filtering by another agency's sales rep gets 200 instead of 403
+Priority: High
+Story: CSP-264 (AC3, BE1)
+Status: still open on dev 94b43b1 - IsListFilterAllowed still checks shopId only for ShopOwner and salesRepId only for SalesRep. Reproduced on 14 Oct by the integration test.
+Retest: RUN-INTEGRATION.bat - Sprint4Qa_CSP264_Spec_Operator_passing_another_agencys_rep_gets_403 must pass.
+
+BUG-04
+Title: Audit API returns 401 for valid access tokens on staging
+Priority: Highest (blocker)
+Story: blocks CSP-250, CSP-252, CSP-253
+Status: open on sellora-audit dev 770ccad
+Steps: 1. Copy a fresh Company Admin access token from the web app. 2. GET https://sellora-audit-staging-egdwdxbnexg4hadk.eastasia-01.azurewebsites.net/api/audit?pageSize=1 with Authorization: Bearer <token>. 3. Send the same token to GET /api/deliveries on the Delivery API.
+Expected: 200 from both.
+Actual: Delivery answers 200; Audit answers 401 with an empty body (the service's own JWT check, not API Manager). Every role gets the same 401 on /api/audit, /api/audit/verify, /api/reports/* and /api/reports/export, so no audit, report or export case can run.
+Likely cause: the same as BUG-01 in Delivery. Program.cs relaxes the certificate check for the WSO2 IS metadata call only when the environment is Development or Staging. The repo has no appsettings.Staging.json and cd-staging.yml sets no app settings, so if ASPNETCORE_ENVIRONMENT is not Staging on the sellora-audit-staging App Service, the service cannot download the signing keys from https://13.61.228.129:9443 (self-signed certificate) and rejects every token. The App Service log stream should show IDX20803 "Unable to obtain configuration".
+Suggested fix: set ASPNETCORE_ENVIRONMENT=Staging on the sellora-audit-staging App Service (or add it to the deployment), restart, and check the log stream.
+Also needed: publish the Audit API in API Manager (context /sellora-audit/1.0.0) and subscribe the web app's application, so the tests and the web app go through the gateway like the other services. The QA run used the App Service URL directly because the gateway path answered 404.
+Retest: fresh tokens, python audit_log_tests.py --target staging. The preflight line must show "Audit GET /api/audit -> 200"; then rerun CSP-250, CSP-252 and CSP-253.
