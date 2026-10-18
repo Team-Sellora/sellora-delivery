@@ -24,4 +24,7 @@ ENV ASPNETCORE_ENVIRONMENT=$ASPNETCORE_ENVIRONMENT
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
+# The aspnet image ships a non-root "app" user (APP_UID); port 8080 needs no root.
+USER $APP_UID
+
 ENTRYPOINT ["dotnet", "Sellora.DeliveryService.Api.dll"]

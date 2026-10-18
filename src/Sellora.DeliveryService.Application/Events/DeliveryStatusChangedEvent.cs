@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Sellora.DeliveryService.Application.Events;
 
 public record DeliveryStatusChangedEvent(
@@ -25,6 +27,7 @@ public record DeliveryStatusChangedEvent(
     public record AgencyInfo(Guid AgencyId, string Name, string Email);
     public record ActorInfo(string UserId, string Role);
 
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Factory mirrors the published event contract field-for-field; changing its shape would change the wire format.")]
     public static DeliveryStatusChangedEvent Create(
         Guid companyId,
         Guid deliveryId,

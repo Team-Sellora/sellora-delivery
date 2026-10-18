@@ -15,6 +15,8 @@ namespace Sellora.DeliveryService.Tests.Unit;
 
 public class DeliveriesControllerQueryTests
 {
+    private static readonly string[] PendingStatus = ["Pending"];
+
     private readonly Mock<IDeliveryJobRepository> _repoMock;
     private readonly Mock<IOrganizationClient> _orgClientMock;
     private readonly Mock<ITenantContext> _tenantMock;
@@ -99,7 +101,7 @@ public class DeliveriesControllerQueryTests
 
         // Act
         var result = await _controller.GetDeliveries(
-            new DeliveryListFilter { Status = new[] { "Pending" }, Page = 2, PageSize = 10 });
+            new DeliveryListFilter { Status = PendingStatus, Page = 2, PageSize = 10 });
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();
@@ -125,7 +127,7 @@ public class DeliveriesControllerQueryTests
 
         var job = typeof(DeliveryJob).GetConstructor(
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
-            null, new Type[0], null)?.Invoke(null) as DeliveryJob;
+            null, Type.EmptyTypes, null)?.Invoke(null) as DeliveryJob;
         
         typeof(DeliveryJob).GetProperty("ShopId")?.SetValue(job, otherShopId);
         

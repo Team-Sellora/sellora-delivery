@@ -88,13 +88,13 @@ internal class DeliveryJobRepository(DeliveryDbContext db) : IDeliveryJobReposit
 
     private static IQueryable<DeliveryJob> ApplyQueryFilters(IQueryable<DeliveryJob> q, DeliveryJobQuery query)
     {
-        if (query.Statuses != null && query.Statuses.Any())
+        if (query.Statuses != null && query.Statuses.Length > 0)
         {
             var validStatuses = query.Statuses
                 .Where(s => Enum.TryParse<Domain.Enums.DeliveryStatus>(s, out _))
                 .Select(Enum.Parse<Domain.Enums.DeliveryStatus>)
                 .ToList();
-            if (validStatuses.Any())
+            if (validStatuses.Count > 0)
             {
                 q = q.Where(j => validStatuses.Contains(j.Status));
             }

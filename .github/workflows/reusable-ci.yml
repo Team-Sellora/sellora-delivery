@@ -79,6 +79,7 @@ jobs:
             /o:"${{ inputs.sonar-organization }}" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.exclusions="**/Migrations/**" \
             /d:sonar.coverage.exclusions="**/Migrations/**,**/Program.cs,**/DeliveryDbContextFactory.cs,**/DependencyInjection.cs,**/Persistence/Configurations/**,**/Http/**,**/Middleware/**" \
             /d:sonar.qualitygate.wait=false
 
@@ -152,7 +153,6 @@ jobs:
 
           docker run -d --name sellora-delivery-ci --network host \
             -e ASPNETCORE_ENVIRONMENT=Container \
-            -e ASPNETCORE_URLS="http://+:8080" \
             -e ConnectionStrings__DeliveryDb="Host=localhost;Port=5432;Database=delivery_ci;Username=sellora_ci;Password=sellora_ci_password" \
             -e Kafka__BootstrapServers="localhost:9092" \
             -e Jwt__Authority="https://auth.invalid" \

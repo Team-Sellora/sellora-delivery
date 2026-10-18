@@ -7,8 +7,11 @@ using Xunit;
 
 namespace Sellora.DeliveryService.Tests.Unit;
 
-public class ReturnRequestTests
+public partial class ReturnRequestTests
 {
+    [GeneratedRegex(@"^RT-\d{6}-[0-9A-F]{6}$")]
+    private static partial Regex ReturnReferencePattern();
+
     [Fact]
     public void Create_InitializesRequestedReturn_WithLines()
     {
@@ -124,7 +127,7 @@ public class ReturnRequestTests
         var reference = generator.Generate(at);
 
         reference.Should().StartWith("RT-261011-");
-        Regex.IsMatch(reference, @"^RT-\d{6}-[0-9A-F]{6}$").Should().BeTrue();
+        ReturnReferencePattern().IsMatch(reference).Should().BeTrue();
     }
 
     private static ReturnRequest CreateSampleReturn()

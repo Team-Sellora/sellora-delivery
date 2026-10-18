@@ -75,7 +75,7 @@ public class DeliveryJobQueryIntegrationTests : IAsyncLifetime
         
         var job = typeof(DeliveryJob).GetConstructor(
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
-            null, new Type[0], null)?.Invoke(null) as DeliveryJob;
+            null, Type.EmptyTypes, null)?.Invoke(null) as DeliveryJob;
         
         typeof(DeliveryJob).GetProperty("DeliveryReference")?.SetValue(job, "DEL-123");
         typeof(DeliveryJob).GetProperty("AgencyId")?.SetValue(job, agencyId);

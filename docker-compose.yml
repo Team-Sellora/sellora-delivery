@@ -5,7 +5,8 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: sellora
-      POSTGRES_PASSWORD: sellora
+      # Local-only default; override with POSTGRES_PASSWORD in the shell or a .env file.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sellora}
       POSTGRES_DB: delivery_db
     ports:
       - "5432:5432"

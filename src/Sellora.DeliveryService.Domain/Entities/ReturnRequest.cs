@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Sellora.DeliveryService.Domain.Enums;
 
 namespace Sellora.DeliveryService.Domain.Entities;
@@ -24,6 +25,7 @@ public class ReturnRequest
     public string? DecisionReason { get; private set; }
     public Guid? InventoryOwnerId { get; private set; }
 
+    [SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed", Justification = "Set by EF Core from the PostgreSQL xmin concurrency token.")]
     public uint Version { get; private set; }
 
     private readonly List<ReturnRequestLine> _lines = [];
@@ -31,6 +33,7 @@ public class ReturnRequest
 
     private ReturnRequest() { }
 
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Domain factory takes every field of the entity snapshot; callers use named arguments.")]
     public static ReturnRequest Create(
         Guid companyId,
         string returnReference,

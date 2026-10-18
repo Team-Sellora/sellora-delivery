@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Sellora.DeliveryService.Domain.Enums;
 
 namespace Sellora.DeliveryService.Domain.Entities;
@@ -42,6 +43,7 @@ public class DeliveryJob
     public DateTimeOffset? LastLocationAt { get; private set; }
 
     // EF Core xmin optimistic concurrency
+    [SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed", Justification = "Set by EF Core from the PostgreSQL xmin concurrency token.")]
     public uint Version { get; private set; }
 
     private readonly List<DeliveryJobLine> _lines = [];
@@ -52,6 +54,7 @@ public class DeliveryJob
 
     private DeliveryJob() { }
 
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Domain factory takes every field of the entity snapshot; callers use named arguments.")]
     public static DeliveryJob CreatePending(
         Guid companyId,
         string deliveryReference,
@@ -103,6 +106,7 @@ public class DeliveryJob
 
     // ImmediateCashSale orders bypass the pending/assigned/transit lifecycle — the goods
     // already left the van at checkout, so the record is created in its terminal state.
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Domain factory takes every field of the entity snapshot; callers use named arguments.")]
     public static DeliveryJob CreateDelivered(
         Guid companyId,
         string deliveryReference,

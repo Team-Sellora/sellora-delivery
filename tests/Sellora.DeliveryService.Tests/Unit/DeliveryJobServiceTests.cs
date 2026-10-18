@@ -14,6 +14,8 @@ namespace Sellora.DeliveryService.Tests.Unit;
 
 public class DeliveryJobServiceTests
 {
+    private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly Mock<IDeliveryJobRepository> _repositoryMock = new();
     private readonly Mock<IOutboxWriter> _outboxWriterMock = new();
     private readonly Mock<IDeliveryReferenceGenerator> _refGenMock = new();
@@ -147,7 +149,7 @@ public class DeliveryJobServiceTests
         capturedOutbox.MessageKey.Should().Be(evt.OrderReference);
 
         var outboundEvt = JsonSerializer.Deserialize<DeliveryJobCreatedEvent>(capturedOutbox.Payload,
-            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            WebJsonOptions);
         outboundEvt!.Status.Should().Be("Pending");
     }
 
