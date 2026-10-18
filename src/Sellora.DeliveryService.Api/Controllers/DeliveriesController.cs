@@ -17,6 +17,8 @@ namespace Sellora.DeliveryService.Api.Controllers;
 [Authorize]
 public class DeliveriesController : ControllerBase
 {
+    private const string UnknownUserId = "unknown";
+
     private readonly IDeliveryJobRepository _repository;
     private readonly IOrganizationClient _organizationClient;
     private readonly IOutboxWriter _outboxWriter;
@@ -105,7 +107,7 @@ public class DeliveriesController : ControllerBase
             _logger.LogWarning("Shop coordinates not found in organization hierarchy for DeliveryJob {DeliveryJobId}, Shop {ShopId}", job.DeliveryJobId, job.ShopId);
         }
 
-        var userId = User.FindFirst("sub")?.Value ?? "unknown";
+        var userId = User.FindFirst("sub")?.Value ?? UnknownUserId;
         var role = User.FindFirst("roles")?.Value ?? "AgencyOperator";
         
         job.Assign(
@@ -191,7 +193,7 @@ public class DeliveriesController : ControllerBase
             return Conflict(new { detail = $"Transition from {job.Status} to {newStatus} is not allowed." });
         }
 
-        var userId = User.FindFirst("sub")?.Value ?? "unknown";
+        var userId = User.FindFirst("sub")?.Value ?? UnknownUserId;
         var role = User.FindFirst("roles")?.Value ?? "SalesRep";
 
         job.ChangeStatus(newStatus, userId, role, request.Reason);
@@ -295,7 +297,7 @@ public class DeliveriesController : ControllerBase
             return CreateValidationProblem("capturedAt", "CapturedAt cannot be older than 30 minutes.");
         }
 
-        var userId = User.FindFirst("sub")?.Value ?? "unknown";
+        var userId = User.FindFirst("sub")?.Value ?? UnknownUserId;
         var location = DeliveryLocation.Create(
             companyId: job.CompanyId,
             deliveryJobId: job.DeliveryJobId,
@@ -599,7 +601,7 @@ public class DeliveriesController : ControllerBase
 
         await _repository.AddConfirmationAsync(confirmation, ct);
 
-        var userId = User.FindFirst("sub")?.Value ?? "unknown";
+        var userId = User.FindFirst("sub")?.Value ?? UnknownUserId;
         var role = roles.FirstOrDefault() ?? "ShopOwner";
         var correlationId = HttpContext.Items["CorrelationId"]?.ToString();
 
@@ -618,7 +620,7 @@ public class DeliveriesController : ControllerBase
         return Ok(MapConfirmationDto(confirmation));
     }
 
-    private static IActionResult? ValidateDeliveryAccess(DeliveryJob job, CallerScope? callerScope, List<string> roles)
+    private static NotFoundResult? ValidateDeliveryAccess(DeliveryJob job, CallerScope? callerScope, List<string> roles)
     {
         var isCompanyAdmin = roles.Contains(SelloraRoles.SystemAdmin) || roles.Contains(SelloraRoles.CompanyAdmin);
         if (isCompanyAdmin)
@@ -694,7 +696,7 @@ public class DeliveriesController : ControllerBase
         return null;
     }
 
-    private static IActionResult? ValidateRequestPayload(
+    private static BadRequestObjectResult? ValidateRequestPayload(
         DeliveryConfirmationRequest request,
         out ConfirmationType confirmationType,
         out string? notes)
@@ -799,7 +801,7 @@ public class DeliveriesController : ControllerBase
         );
     }
 
-    private static IActionResult CreateValidationProblem(string field, string detail)
+    private static BadRequestObjectResult CreateValidationProblem(string field, string detail)
     {
         var problem = new ValidationProblemDetails(new Dictionary<string, string[]>
         {

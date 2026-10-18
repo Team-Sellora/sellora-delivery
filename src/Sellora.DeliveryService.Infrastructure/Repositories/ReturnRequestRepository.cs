@@ -110,17 +110,10 @@ internal class ReturnRequestRepository(DeliveryDbContext db) : IReturnRequestRep
             baseQuery = baseQuery.Where(x => x.Request.AgencyId == query.AgencyId.Value);
         }
 
-        if (query.Statuses != null && query.Statuses.Count > 0)
+        var validStatuses = ParseStatuses(query.Statuses);
+        if (validStatuses.Count > 0)
         {
-            var validStatuses = query.Statuses
-                .Where(s => Enum.TryParse<ReturnStatus>(s, true, out _))
-                .Select(s => Enum.Parse<ReturnStatus>(s, true))
-                .ToList();
-
-            if (validStatuses.Count > 0)
-            {
-                baseQuery = baseQuery.Where(x => validStatuses.Contains(x.Request.Status));
-            }
+            baseQuery = baseQuery.Where(x => validStatuses.Contains(x.Request.Status));
         }
 
         var totalCount = await baseQuery.CountAsync(ct);
@@ -143,6 +136,19 @@ internal class ReturnRequestRepository(DeliveryDbContext db) : IReturnRequestRep
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    private static List<ReturnStatus> ParseStatuses(List<string>? statuses)
+    {
+        if (statuses == null || statuses.Count == 0)
+        {
+            return [];
+        }
+
+        return statuses
+            .Where(s => Enum.TryParse<ReturnStatus>(s, true, out _))
+            .Select(s => Enum.Parse<ReturnStatus>(s, true))
+            .ToList();
     }
 
     public Task SaveChangesAsync(CancellationToken ct = default)

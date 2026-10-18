@@ -6,7 +6,7 @@ namespace Sellora.DeliveryService.Tests.Unit;
 
 public class DeliveryJobTests
 {
-    private DeliveryJob CreateTestJob()
+    private static DeliveryJob CreateTestJob()
     {
         return DeliveryJob.CreatePending(
             Guid.NewGuid(), "REF-123", Guid.NewGuid(), "ORD-1", "Delivery",

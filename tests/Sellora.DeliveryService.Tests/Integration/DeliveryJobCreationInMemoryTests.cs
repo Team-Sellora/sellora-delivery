@@ -31,7 +31,11 @@ public class DeliveryJobCreationInMemoryTests : IDisposable
         _db = new DeliveryDbContext(options, tenantContext: null);
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose()
+    {
+        _db.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     private DeliveryJobService CreateService() => new(
         new DeliveryJobRepository(_db),

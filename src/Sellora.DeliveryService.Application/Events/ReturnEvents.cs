@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Sellora.DeliveryService.Application.Events;
 
 public record ReturnShopInfo(Guid ShopId, string Name, string OwnerName, string OwnerEmail);
@@ -27,6 +29,7 @@ public record ReturnRequestedEvent(
     string? CorrelationId = null
 )
 {
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Factory mirrors the published event contract field-for-field; changing its shape would change the wire format.")]
     public static ReturnRequestedEvent Create(
         Guid companyId,
         Guid returnRequestId,
@@ -89,6 +92,7 @@ public record ReturnAcceptedEvent(
     ReturnAgencyInfo Agency
 )
 {
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Factory mirrors the published event contract field-for-field; changing its shape would change the wire format.")]
     public static ReturnAcceptedEvent Create(
         Guid companyId,
         Guid returnRequestId,
@@ -143,6 +147,7 @@ public record ReturnRejectedEvent(
     string? CorrelationId = null
 )
 {
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Factory mirrors the published event contract field-for-field; changing its shape would change the wire format.")]
     public static ReturnRejectedEvent Create(
         Guid companyId,
         Guid returnRequestId,

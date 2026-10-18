@@ -24,9 +24,11 @@ public sealed record OrderConfirmedWireEvent
     public EventLocation? CheckoutLocation { get; init; }
     public DateTimeOffset ConfirmedAt { get; init; }
 
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public static OrderConfirmedEvent Parse(string json)
     {
-        var wire = JsonSerializer.Deserialize<OrderConfirmedWireEvent>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        var wire = JsonSerializer.Deserialize<OrderConfirmedWireEvent>(json, JsonOptions)
             ?? throw new JsonException("OrderConfirmed event is null.");
 
         if (wire.EventType != "OrderConfirmed" || wire.SchemaVersion != "1.0" ||

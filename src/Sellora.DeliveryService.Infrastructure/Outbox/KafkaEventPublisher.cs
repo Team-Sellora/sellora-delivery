@@ -58,7 +58,8 @@ internal static class KafkaEventPublisher
         {
             logger.LogError(ex, "OutboxRelay failed to publish {EventType} to {Topic}",
                 message.EventType, message.Topic);
-            throw;
+            throw new InvalidOperationException(
+                $"OutboxRelay failed to publish outbox message {message.OutboxMessageId} ({message.EventType}) to {message.Topic}.", ex);
         }
     }
 }

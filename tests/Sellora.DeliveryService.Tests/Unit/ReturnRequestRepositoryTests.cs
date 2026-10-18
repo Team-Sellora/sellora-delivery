@@ -30,7 +30,11 @@ public class ReturnRequestRepositoryTests : IDisposable
         _repository = new ReturnRequestRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose()
+    {
+        _db.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     private DeliveryJob CreateJob(
         Guid agencyId,
@@ -175,7 +179,7 @@ public class ReturnRequestRepositoryTests : IDisposable
         var (items, totalCount) = await _repository.ListAsync(query);
         totalCount.Should().Be(2);
         items.Should().HaveCount(2);
-        items.First().Status.Should().Be(ReturnStatus.Requested); // Requested ordered first
+        items[0].Status.Should().Be(ReturnStatus.Requested); // Requested ordered first
     }
 
     [Fact]

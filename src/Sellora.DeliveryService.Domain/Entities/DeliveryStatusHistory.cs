@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Sellora.DeliveryService.Domain.Enums;
 
 namespace Sellora.DeliveryService.Domain.Entities;
@@ -17,6 +18,7 @@ public class DeliveryStatusHistory
 
     private DeliveryStatusHistory() { }
 
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Domain factory takes every field of the entity snapshot; callers use named arguments.")]
     public DeliveryStatusHistory(
         Guid deliveryJobId,
         Guid companyId,

@@ -44,7 +44,7 @@ public class DeliveryJobCreationIntegrationTests : IAsyncLifetime
         await _postgres.DisposeAsync();
     }
 
-    private DeliveryJobService CreateService(DeliveryDbContext db)
+    private static DeliveryJobService CreateService(DeliveryDbContext db)
     {
         var repo = new DeliveryJobRepository(db);
         var outboxWriter = new Infrastructure.Outbox.EntityFrameworkOutboxWriter(db);

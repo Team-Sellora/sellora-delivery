@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Sellora.DeliveryService.Domain.Entities;
 
 public class DeliveryLocation
@@ -14,6 +16,7 @@ public class DeliveryLocation
 
     private DeliveryLocation() { }
 
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Domain factory takes every field of the entity snapshot; callers use named arguments.")]
     public static DeliveryLocation Create(
         Guid companyId,
         Guid deliveryJobId,

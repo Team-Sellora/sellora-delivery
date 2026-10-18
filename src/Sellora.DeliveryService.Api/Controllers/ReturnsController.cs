@@ -490,7 +490,7 @@ public class ReturnsController : ControllerBase
         return null;
     }
 
-    private static IActionResult CreateLineProblem(Guid productId, string message)
+    private static BadRequestObjectResult CreateLineProblem(Guid productId, string message)
     {
         var problem = new ProblemDetails
         {
@@ -509,7 +509,7 @@ public class ReturnsController : ControllerBase
     private static bool IsCompanyAdmin(List<string> roles) =>
         roles.Contains(SelloraRoles.SystemAdmin) || roles.Contains(SelloraRoles.CompanyAdmin);
 
-    private static IActionResult? ValidateJobScope(DeliveryJob job, CallerScope? callerScope, List<string> roles)
+    private static NotFoundResult? ValidateJobScope(DeliveryJob job, CallerScope? callerScope, List<string> roles)
     {
         if (IsCompanyAdmin(roles)) return null;
 

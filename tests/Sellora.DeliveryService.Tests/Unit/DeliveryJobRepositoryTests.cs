@@ -29,7 +29,11 @@ public class DeliveryJobRepositoryTests : IDisposable
         _repository = new DeliveryJobRepository(_db);
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose()
+    {
+        _db.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     private DeliveryJob CreateJob(
         Guid agencyId,

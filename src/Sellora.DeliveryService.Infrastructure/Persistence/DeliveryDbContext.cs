@@ -57,28 +57,20 @@ public class DeliveryDbContext : DbContext
 
     private void EnforceAppendOnlyHistory()
     {
-        foreach (var entry in ChangeTracker.Entries<DeliveryStatusHistory>())
-        {
-            if (entry.State == EntityState.Modified || entry.State == EntityState.Deleted)
-            {
-                throw new InvalidOperationException("DeliveryStatusHistory is append-only and cannot be modified or deleted.");
-            }
-        }
+        RejectChanges<DeliveryStatusHistory>("DeliveryStatusHistory is append-only and cannot be modified or deleted.");
 
-        foreach (var entry in ChangeTracker.Entries<DeliveryConfirmation>())
-        {
-            if (entry.State == EntityState.Modified || entry.State == EntityState.Deleted)
-            {
-                throw new InvalidOperationException("DeliveryConfirmation is append-only and cannot be modified or deleted.");
-            }
-        }
+        RejectChanges<DeliveryConfirmation>("DeliveryConfirmation is append-only and cannot be modified or deleted.");
 
-        foreach (var entry in ChangeTracker.Entries<DeliveryLocation>())
+        RejectChanges<DeliveryLocation>("DeliveryLocation is append-only and cannot be modified or deleted.");
+    }
+
+    private void RejectChanges<TEntity>(string message) where TEntity : class
+    {
+        if (ChangeTracker.Entries<TEntity>()
+            .Select(entry => entry.State)
+            .Any(state => state == EntityState.Modified || state == EntityState.Deleted))
         {
-            if (entry.State == EntityState.Modified || entry.State == EntityState.Deleted)
-            {
-                throw new InvalidOperationException("DeliveryLocation is append-only and cannot be modified or deleted.");
-            }
+            throw new InvalidOperationException(message);
         }
     }
 }

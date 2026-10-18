@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Sellora.DeliveryService.Application.Events;
 
 public record DeliveryJobCreatedEvent(
@@ -19,6 +21,7 @@ public record DeliveryJobCreatedEvent(
     DateTimeOffset? DeliveredAt,
     DateTimeOffset CreatedAt)
 {
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Factory mirrors the published event contract field-for-field; changing its shape would change the wire format.")]
     public static DeliveryJobCreatedEvent Create(
         Guid companyId,
         Guid deliveryJobId,

@@ -8,7 +8,7 @@ namespace Sellora.DeliveryService.Tests.Unit;
 
 public class DeliveryDbContextTests
 {
-    private DeliveryDbContext CreateDbContext()
+    private static DeliveryDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<DeliveryDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
