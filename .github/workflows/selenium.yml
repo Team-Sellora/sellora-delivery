@@ -1,0 +1,41 @@
+name: Selenium UI tests (Delivery)
+
+on:
+  push:
+    branches:
+      - test/selenium-delivery
+  workflow_dispatch:
+
+jobs:
+  selenium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: http://test.selloralk.tech
+      TEST_USER: ${{ secrets.SELLORA_TEST_USER }}
+      TEST_PASSWORD: ${{ secrets.SELLORA_TEST_PASSWORD }}
+    defaults:
+      run:
+        working-directory: selenium-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: selenium-tests/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Selenium tests
+        run: pytest --html=reports/report.html --self-contained-html --junitxml=reports/junit.xml
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-delivery-report
+          path: selenium-tests/reports/
+          if-no-files-found: warn
