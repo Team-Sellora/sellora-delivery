@@ -1,3 +1,4 @@
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -21,7 +22,9 @@ el.dispatchEvent(new Event('change', { bubbles: true }));
 class BasePage:
     def __init__(self, driver, timeout=DEFAULT_TIMEOUT):
         self.driver = driver
-        self.wait = WebDriverWait(driver, timeout)
+        self.wait = WebDriverWait(
+            driver, timeout, ignored_exceptions=(StaleElementReferenceException,)
+        )
 
     def find(self, locator):
         return self.wait.until(EC.presence_of_element_located(locator))
@@ -34,6 +37,19 @@ class BasePage:
 
     def is_present(self, locator):
         return len(self.driver.find_elements(*locator)) > 0
+
+    def read(self, fn):
+        # Runs fn again if React replaced an element while it was being read
+        def attempt(_driver):
+            try:
+                return [fn()]
+            except StaleElementReferenceException:
+                return False
+
+        return self.wait.until(attempt)[0]
+
+    def text_of(self, locator):
+        return self.read(lambda: self.visible(locator).text.strip())
 
     def set_react_value(self, element, value):
         self.driver.execute_script(SET_REACT_VALUE_JS, element, value)
@@ -57,15 +73,19 @@ class BasePage:
     # Page header
 
     def heading_text(self):
-        return self.visible(PAGE_HEADING).text.strip()
+        return self.text_of(PAGE_HEADING)
 
     def wait_for_heading(self, expected_options):
-        self.wait.until(
-            lambda d: any(
-                h.text.strip() in expected_options for h in d.find_elements(*PAGE_HEADING)
-            )
-        )
+        def heading_matches(driver):
+            try:
+                return any(
+                    h.text.strip() in expected_options for h in driver.find_elements(*PAGE_HEADING)
+                )
+            except StaleElementReferenceException:
+                return False
+
+        self.wait.until(heading_matches)
         return self.heading_text()
 
     def breadcrumb_text(self):
-        return self.visible(BREADCRUMB).text
+        return self.text_of(BREADCRUMB)

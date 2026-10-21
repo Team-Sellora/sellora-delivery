@@ -30,18 +30,24 @@ class ShopReturnsPage(BasePage):
         )
 
     def error_text(self):
-        banners = self.driver.find_elements(*ERROR_BANNER)
-        return banners[0].text.strip() if banners else None
+        def banner_text():
+            banners = self.driver.find_elements(*ERROR_BANNER)
+            return banners[0].text.strip() if banners else None
+
+        return self.read(banner_text)
 
     def column_headers(self):
-        return [th.text.strip() for th in self.driver.find_elements(*HEADER_CELLS)]
+        return self.read(lambda: [th.text.strip() for th in self.driver.find_elements(*HEADER_CELLS)])
 
     def status_options(self):
-        return [o.text.strip() for o in Select(self.find(STATUS_FILTER)).options]
+        return self.read(lambda: [o.text.strip() for o in Select(self.find(STATUS_FILTER)).options])
 
     def is_empty(self):
-        rows = self.driver.find_elements(*BODY_ROWS)
-        return len(rows) == 1 and rows[0].text.strip() == EMPTY_MESSAGE
+        def empty():
+            rows = self.driver.find_elements(*BODY_ROWS)
+            return len(rows) == 1 and rows[0].text.strip() == EMPTY_MESSAGE
+
+        return self.read(empty)
 
     def first_row_cell_count(self):
-        return len(self.find(BODY_ROWS).find_elements(By.TAG_NAME, "td"))
+        return self.read(lambda: len(self.find(BODY_ROWS).find_elements(By.TAG_NAME, "td")))

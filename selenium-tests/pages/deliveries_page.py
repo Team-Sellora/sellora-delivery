@@ -1,6 +1,6 @@
 import re
 
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -55,10 +55,13 @@ class DeliveriesPage(BasePage):
     # List state
 
     def _loaded(self, driver):
-        if driver.find_elements(*ERROR_BANNER):
-            return True
-        rows = driver.find_elements(*BODY_ROWS)
-        return len(rows) > 0 and rows[0].text.strip() != LOADING_TEXT
+        try:
+            if driver.find_elements(*ERROR_BANNER):
+                return True
+            rows = driver.find_elements(*BODY_ROWS)
+            return len(rows) > 0 and rows[0].text.strip() != LOADING_TEXT
+        except StaleElementReferenceException:
+            return False
 
     def wait_until_loaded(self):
         self.find(QUEUE_SECTION)
@@ -76,34 +79,47 @@ class DeliveriesPage(BasePage):
         self.wait_until_loaded()
 
     def error_text(self):
-        banners = self.driver.find_elements(*ERROR_BANNER)
-        return banners[0].text.strip() if banners else None
+        def banner_text():
+            banners = self.driver.find_elements(*ERROR_BANNER)
+            return banners[0].text.strip() if banners else None
+
+        return self.read(banner_text)
 
     def column_headers(self):
         # Header cells are upper-cased by CSS, so compare without case
-        return [th.text.strip() for th in self.driver.find_elements(*HEADER_CELLS)]
+        return self.read(lambda: [th.text.strip() for th in self.driver.find_elements(*HEADER_CELLS)])
 
     def rows(self):
         return self.driver.find_elements(*BODY_ROWS)
 
-    def is_empty(self):
+    def _is_empty_now(self):
         rows = self.rows()
         return len(rows) == 1 and rows[0].text.strip() in EMPTY_MESSAGES
 
+    def is_empty(self):
+        return self.read(self._is_empty_now)
+
     def data_rows(self):
-        return [] if self.is_empty() else self.rows()
+        return self.read(lambda: [] if self._is_empty_now() else self.rows())
 
     def total_count(self):
-        for span in self.driver.find_elements(*TOOLBAR_SPANS):
-            match = COUNT_PATTERN.match(span.text.strip())
-            if match:
-                return int(match.group(1))
-        raise AssertionError("Delivery count label not found")
+        def count():
+            for span in self.driver.find_elements(*TOOLBAR_SPANS):
+                match = COUNT_PATTERN.match(span.text.strip())
+                if match:
+                    return int(match.group(1))
+            raise AssertionError("Delivery count label not found")
+
+        return self.read(count)
 
     def status_values(self):
-        headers = [h.lower() for h in self.column_headers()]
-        index = headers.index("status")
-        return [row.find_elements(By.TAG_NAME, "td")[index].text.strip() for row in self.data_rows()]
+        def values():
+            headers = [h.lower() for h in self.column_headers()]
+            index = headers.index("status")
+            rows = [] if self._is_empty_now() else self.rows()
+            return [row.find_elements(By.TAG_NAME, "td")[index].text.strip() for row in rows]
+
+        return self.read(values)
 
     # Filters (only shown to agency roles)
 
@@ -111,7 +127,7 @@ class DeliveriesPage(BasePage):
         return self.is_present(STATUS_FILTER)
 
     def status_filter_text(self):
-        return self.visible(STATUS_FILTER).text.strip()
+        return self.text_of(STATUS_FILTER)
 
     def choose_status(self, label):
         def action():
@@ -128,13 +144,18 @@ class DeliveriesPage(BasePage):
         self.refresh_after(action)
 
     def date_range(self):
-        return self.find(FROM_DATE).get_attribute("value"), self.find(TO_DATE).get_attribute("value")
+        return self.read(
+            lambda: (
+                self.find(FROM_DATE).get_attribute("value"),
+                self.find(TO_DATE).get_attribute("value"),
+            )
+        )
 
     def set_rep_filter(self, value):
         self.refresh_after(lambda: self.set_react_value(self.find(REP_FILTER), value))
 
     def rep_filter_value(self):
-        return self.find(REP_FILTER).get_attribute("value")
+        return self.read(lambda: self.find(REP_FILTER).get_attribute("value"))
 
     def reset_filters(self):
         if self.status_filter_text() != "All statuses":
@@ -147,16 +168,16 @@ class DeliveriesPage(BasePage):
     # Paging
 
     def page_info(self):
-        text = self.visible(PAGE_LABEL).text.strip()
+        text = self.text_of(PAGE_LABEL)
         match = PAGE_PATTERN.match(text)
         assert match, f"Unexpected paging label: {text!r}"
         return int(match.group(1)), int(match.group(2))
 
     def previous_enabled(self):
-        return self.find(PREVIOUS_BUTTON).is_enabled()
+        return self.read(lambda: self.find(PREVIOUS_BUTTON).is_enabled())
 
     def next_enabled(self):
-        return self.find(NEXT_BUTTON).is_enabled()
+        return self.read(lambda: self.find(NEXT_BUTTON).is_enabled())
 
     def go_next(self):
         self.refresh_after(lambda: self.click(NEXT_BUTTON))
@@ -167,7 +188,10 @@ class DeliveriesPage(BasePage):
     # Details
 
     def open_first_delivery(self):
-        link = self.data_rows()[0].find_element(*ROW_DETAIL_LINK)
-        reference = link.text.strip()
-        link.click()
-        return reference
+        def open_link():
+            link = self.rows()[0].find_element(*ROW_DETAIL_LINK)
+            reference = link.text.strip()
+            link.click()
+            return reference
+
+        return self.read(open_link)
