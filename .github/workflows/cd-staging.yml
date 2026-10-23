@@ -1,0 +1,92 @@
+name: CD - Deploy Staging
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy-staging:
+    name: Deploy to Azure staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Validate staging configuration
+        shell: bash
+        env:
+          APP_NAME: ${{ vars.AZURE_STAGING_APP_NAME }}
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$APP_NAME" ] || [ -z "$BASE_URL" ] || [ -z "$DOCKERHUB_USERNAME" ]; then
+            echo "Configure AZURE_STAGING_APP_NAME and STAGING_BASE_URL in the staging environment, and DOCKERHUB_USERNAME as a repository variable."
+            exit 1
+          fi
+
+          if [[ "$BASE_URL" != https://* ]]; then
+            echo "STAGING_BASE_URL must start with https://"
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push staging image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            BUILD_COMMIT_SHA=${{ github.sha }}
+            ASPNETCORE_ENVIRONMENT=Staging
+          push: true
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/sellora-delivery:dev-${{ github.sha }}
+
+      - name: Deploy staging image
+        uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
+        with:
+          app-name: ${{ vars.AZURE_STAGING_APP_NAME }}
+          slot-name: staging
+          publish-profile: ${{ secrets.AZURE_STAGING_PUBLISH_PROFILE }}
+          images: index.docker.io/${{ vars.DOCKERHUB_USERNAME }}/sellora-delivery:dev-${{ github.sha }}
+
+      - name: Validate staging startup
+        shell: bash
+        env:
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..20}; do
+            RESPONSE=$(curl \
+              --silent \
+              --show-error \
+              --max-time 10 \
+              "${BASE_URL%/}/health" || true)
+
+            if jq -e --arg sha "${{ github.sha }}" '.status == "healthy" and .revision == $sha' <<< "$RESPONSE" >/dev/null 2>&1; then
+              echo "Staging startup validation passed for commit ${{ github.sha }}"
+              exit 0
+            fi
+
+            echo "Attempt $attempt -> expected commit ${{ github.sha }}, response: ${RESPONSE:-unavailable}"
+            sleep 15
+          done
+
+          echo "Staging deployment failed health validation."
+          exit 1

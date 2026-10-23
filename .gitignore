@@ -1,0 +1,37 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+
+## Build artifacts
+[Bb]uild/
+[Pp]ublish/
+artifacts/
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+## Logs
+*.log
+logs/
+
+## Environment / secrets
+*.env
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+## IDE
+.idea/
+.vscode/
+*.DotSettings.user
+
+## Test results
+TestResults/
+coverage/

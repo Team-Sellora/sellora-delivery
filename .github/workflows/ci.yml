@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      solution-path: Sellora.DeliveryService.sln
+      sonar-project-key: Team-Sellora_sellora-delivery
+      sonar-organization: team-sellora
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

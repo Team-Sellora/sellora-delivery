@@ -1,0 +1,94 @@
+diff --git a/src/Sellora.DeliveryService.Api/Program.cs b/src/Sellora.DeliveryService.Api/Program.cs
+index e9ee904..ec42409 100644
+--- a/src/Sellora.DeliveryService.Api/Program.cs
++++ b/src/Sellora.DeliveryService.Api/Program.cs
+@@ -32,7 +32,12 @@ try
+     }
+ 
+     var jwtAuthority = builder.Configuration["Jwt:Authority"];
+-    var jwtAudience = builder.Configuration["Jwt:Audience"];
++    // Same rule as Order, Inventory, Catalog, Organization and Notification:
++    // accept every WSO2 client the web app may sign in with. "Jwt:Audience" can be
++    // a JSON array (Jwt__Audience__0, Jwt__Audience__1) or a single value (Jwt__Audience).
++    var jwtAudiences = builder.Configuration.GetSection("Jwt:Audience").Get<string[]>()
++        ?? new[] { builder.Configuration["Jwt:Audience"] ?? string.Empty };
++    var jwtAudience = string.Join(", ", jwtAudiences);
+ 
+     Log.Information(
+         "Startup configuration: environment={Environment}, jwtAuthority={JwtAuthority}, jwtAudience={JwtAudience}",
+@@ -77,7 +82,6 @@ try
+         .AddJwtBearer(options =>
+         {
+             options.Authority = builder.Configuration["Jwt:Authority"];
+-            options.Audience = builder.Configuration["Jwt:Audience"];
+             options.RequireHttpsMetadata = builder.Configuration.GetValue("Jwt:RequireHttpsMetadata", !shouldRelaxCertificateValidation);
+             if (shouldRelaxCertificateValidation)
+             {
+@@ -97,6 +101,7 @@ try
+             {
+                 ValidateIssuer = true,
+                 ValidateAudience = true,
++                ValidAudiences = jwtAudiences,
+                 ValidateLifetime = true,
+                 RoleClaimType = "roles"
+             };
+diff --git a/src/Sellora.DeliveryService.Api/appsettings.Development.json b/src/Sellora.DeliveryService.Api/appsettings.Development.json
+index 49edd3f..833c536 100644
+--- a/src/Sellora.DeliveryService.Api/appsettings.Development.json
++++ b/src/Sellora.DeliveryService.Api/appsettings.Development.json
+@@ -11,7 +11,10 @@
+   },
+   "Jwt": {
+     "Authority": "https://13.61.228.129:9443/oauth2/token",
+-    "Audience": "gJnSKbGIur_fls3FPgZg0Dim1p4a"
++    "Audience": [
++      "ThNL_9YM7zUgl5k6XWXforF1NNga",
++      "gJnSKbGIur_fls3FPgZg0Dim1p4a"
++    ]
+   },
+   "Dependencies": {
+     "Organization": {
+diff --git a/src/Sellora.DeliveryService.Api/appsettings.Staging.json b/src/Sellora.DeliveryService.Api/appsettings.Staging.json
+index e1e0c50..20f2791 100644
+--- a/src/Sellora.DeliveryService.Api/appsettings.Staging.json
++++ b/src/Sellora.DeliveryService.Api/appsettings.Staging.json
+@@ -1,7 +1,10 @@
+ {
+   "Jwt": {
+     "Authority": "https://13.61.228.129:9443/oauth2/token",
+-    "Audience": "gJnSKbGIur_fls3FPgZg0Dim1p4a"
++    "Audience": [
++      "ThNL_9YM7zUgl5k6XWXforF1NNga",
++      "gJnSKbGIur_fls3FPgZg0Dim1p4a"
++    ]
+   },
+   "Dependencies": {
+     "Organization": {
+diff --git a/tests/Sellora.DeliveryService.Tests/Unit/StagingConfigurationTests.cs b/tests/Sellora.DeliveryService.Tests/Unit/StagingConfigurationTests.cs
+index 30131e3..920e395 100644
+--- a/tests/Sellora.DeliveryService.Tests/Unit/StagingConfigurationTests.cs
++++ b/tests/Sellora.DeliveryService.Tests/Unit/StagingConfigurationTests.cs
+@@ -44,8 +44,10 @@ public sealed class StagingConfigurationTests
+ 
+         Assert.StartsWith("https://", jwt["Authority"]);
+         Assert.DoesNotContain(".internal", jwt["Authority"], StringComparison.OrdinalIgnoreCase);
+-        Assert.False(string.IsNullOrWhiteSpace(jwt["Audience"]));
+-        Assert.NotEqual("sellora-delivery", jwt["Audience"]);
++        var audiences = jwt.GetSection("Audience").Get<string[]>();
++        Assert.NotNull(audiences);
++        Assert.NotEmpty(audiences);
++        Assert.DoesNotContain("sellora-delivery", audiences);
+     }
+ 
+     [Theory]
+@@ -86,6 +88,9 @@ public sealed class StagingConfigurationTests
+             .Build();
+ 
+         Assert.Equal("https://13.61.228.129:9443/oauth2/token", fallbackConfig["Jwt:Authority"]);
+-        Assert.Equal("gJnSKbGIur_fls3FPgZg0Dim1p4a", fallbackConfig["Jwt:Audience"]);
++        var audiences = fallbackConfig.GetSection("Jwt:Audience").Get<string[]>();
++        Assert.NotNull(audiences);
++        Assert.Contains("ThNL_9YM7zUgl5k6XWXforF1NNga", audiences);
++        Assert.Contains("gJnSKbGIur_fls3FPgZg0Dim1p4a", audiences);
+     }
+ }
